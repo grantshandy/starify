@@ -7,6 +7,7 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
+        <Stylesheet id="leptos" href="/pkg/musiscope.css" />
         <Router>
             <main>
                 <Routes>
@@ -20,7 +21,7 @@ pub fn App() -> impl IntoView {
 #[component]
 fn HomePage() -> impl IntoView {
     view! {
-        <h1>"Home page!"</h1>
+        <h1 class="text-2xl font-light">"Home page!"</h1>
     }
 }
 

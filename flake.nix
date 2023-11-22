@@ -27,6 +27,7 @@
             })
             cargo-leptos
             cargo-watch
+            tailwindcss
           ];
         };
       }
