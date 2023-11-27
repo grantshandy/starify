@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{header, Request, Uri},
     response::IntoResponse,
-    routing::post,
+    routing::get,
     Router,
 };
 use leptos::LeptosOptions;
@@ -20,7 +20,10 @@ async fn main() {
     let addr = conf.leptos_options.site_addr;
 
     let router = Router::new()
-        .route("/api/*fn_name", post(leptos_axum::handle_server_fns))
+        .route(
+            "/api/*fn_name",
+            get(leptos_axum::handle_server_fns).post(leptos_axum::handle_server_fns),
+        )
         .leptos_routes(&conf.leptos_options, generate_route_list(App), App)
         .fallback(static_handler)
         .with_state(conf.leptos_options);

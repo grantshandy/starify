@@ -28,6 +28,7 @@
             cargo-leptos
             cargo-watch
             tailwindcss
+            binaryen
           ];
         };
       }
