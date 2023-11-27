@@ -1,6 +1,7 @@
-use http::StatusCode;
+use http::{header, HeaderValue, StatusCode};
 use leptos::*;
 use leptos_router::*;
+use time::{Duration, OffsetDateTime};
 
 pub const CLIENT_ID: &str = env!("SPOTIFY_CLIENT_ID");
 pub const SECRET: &str = env!("SPOTIFY_CLIENT_SECRET");
@@ -19,30 +20,30 @@ pub fn LoginPage() -> impl IntoView {
             future=|| get_login_url()
             let:url_result
         >
-            <a href=url_result.as_ref().unwrap().to_owned()>"Login"</a>
+            <a href=url_result.as_ref().expect("get login URL").to_owned()>"Login"</a>
         </Await>
     }
 }
 
+/// Creates a unique spotify login URL and attaches the current unix time
+/// to the state-passthrough to the URL & client cookie to validate.
 #[server(Login)]
 async fn get_login_url() -> Result<String, ServerFnError> {
-    let now = time::OffsetDateTime::now_utc();
+    let now = OffsetDateTime::now_utc();
     let state = now.unix_timestamp().to_string();
 
     #[cfg(feature = "ssr")]
     {
+        use axum_extra::extract::cookie::{Cookie, SameSite};
         use http::header::{self, HeaderValue};
-        use axum_extra::extract::cookie::{self, Cookie};
-        
-        let response = expect_context::<leptos_axum::ResponseOptions>();
-        
-        response.insert_header(
+
+        expect_context::<leptos_axum::ResponseOptions>().insert_header(
             header::SET_COOKIE,
             HeaderValue::from_str(
                 &Cookie::build(LOGIN_STATE_KEY, &state)
-                    .max_age(time::Duration::minutes(5))
+                    .max_age(Duration::hours(1))
                     .path("/")
-                    .same_site(cookie::SameSite::None)
+                    .same_site(SameSite::None)
                     .domain(DOMAIN)
                     .finish()
                     .to_string(),
@@ -74,12 +75,17 @@ pub fn LoginCallback() -> impl IntoView {
     }
 }
 
+/// This is the endpoint spotify redirects back to with the code & previous state value after authentication.
+/// From here, we error out or redirect back to the main page, registering the client in the database.
 #[server(LoginCallBack)]
 async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use axum::extract::Query;
-        use axum_extra::extract::CookieJar;
+        use axum_extra::extract::{
+            cookie::{Cookie, SameSite},
+            CookieJar,
+        };
 
         #[derive(serde::Deserialize, Debug)]
         struct CallbackQuery {
@@ -98,14 +104,31 @@ async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
         .await
         .map_err(|err| ServerFnError::ServerError(format!("Could not extract query: {err:?}")));
 
+        // set the page status code depending on the status of the state validation
         expect_context::<leptos_axum::ResponseOptions>().set_status(match &res {
             Ok(Some(_)) => StatusCode::FOUND,
             Ok(None) => StatusCode::GONE,
             Err(_) => StatusCode::BAD_REQUEST,
         });
 
-        if res.as_ref().is_ok_and(|c| c.is_some()) {
-            tracing::info!("got it! you should be put in a database");
+        // set the LOGIN_STATE_KEY as null and set the expiration date to zero so the browser removes it.
+        expect_context::<leptos_axum::ResponseOptions>().insert_header(
+            header::SET_COOKIE,
+            HeaderValue::from_str(
+                &Cookie::build(LOGIN_STATE_KEY, "")
+                    .expires(OffsetDateTime::UNIX_EPOCH)
+                    .path("/")
+                    .same_site(SameSite::None)
+                    .domain(DOMAIN)
+                    .finish()
+                    .to_string(),
+            )
+            .expect("create cookie HeaderValue"),
+        );
+
+        if let Ok(Some(code)) = &res {
+            tracing::info!("got it! {code}");
+            leptos_axum::redirect("/about");
         }
 
         return res;

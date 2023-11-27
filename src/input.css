@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body, html {
+  @apply m-0 p-0 flex items-center justify-center min-h-screen;
+}
+
+a {
+  @apply underline italic;
+}
