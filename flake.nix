@@ -24,12 +24,15 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
+
+        # SPOTIFY_CLIENT_ID = builtins.readFile ./.spotify_client_id;
+        # SPOTIFY_CLIENT_SECRET = builtins.readFile ./.spotify_client_secret;
+        
         rustToolchain =
           pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-        name = (craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; }).pname;
-        
+        name = (craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; }).pname;        
         src = with pkgs.lib;
           sources.cleanSourceWith {
             src = craneLib.path ./.;
@@ -53,9 +56,6 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         bin = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
-
-          SPOTIFY_CLIENT_ID="asdf";
-          SPOTIFY_CLIENT_SECRET="asdf";
 
           buildPhaseCargoCommand = "cargo leptos build --release -vvv";
           cargoTestCommand = "cargo leptos test --release -vvv";
@@ -86,7 +86,7 @@
           inherit nativeBuildInputs;
 
           inputsFrom = [ bin ];
-          buildInputs = with pkgs; [ docker dive ];
+          buildInputs = with pkgs; [ docker dive neofetch ];
         };
       });
 }
