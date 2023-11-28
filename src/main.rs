@@ -1,10 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{
-        header,
-        Request, Uri,
-    },
+    http::{header, Request, Uri},
     response::IntoResponse,
     routing::get,
     Router,
