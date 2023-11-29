@@ -20,10 +20,10 @@ struct Args {
     #[argh(option, description = "socket to serve on")]
     socket: Option<SocketAddr>,
 
-    #[argh(option, description = "spotify client id")]
+    #[argh(option, description = "spotify client id (also set through SPOTIFY_CLIENT_ID)")]
     client_id: Option<String>,
 
-    #[argh(option, description = "spotify client secret")]
+    #[argh(option, description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)")]
     client_secret: Option<String>,
 
     #[argh(

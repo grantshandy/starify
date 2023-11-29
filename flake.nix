@@ -24,9 +24,6 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
-
-        # SPOTIFY_CLIENT_ID = builtins.readFile ./.spotify_client_id;
-        # SPOTIFY_CLIENT_SECRET = builtins.readFile ./.spotify_client_secret;
         
         rustToolchain =
           pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -65,18 +62,9 @@
             cp target/release/${name} $out/bin/
           '';
         });
-
-        dockerImage = pkgs.dockerTools.buildImage {
-          inherit name;
-          tag = "latest";
-          copyToRoot = [ bin ];
-          config = {
-            Cmd = [ "${bin}/bin/${name}" ];
-          };
-        };
       in {
         packages = {
-          inherit bin dockerImage;
+          inherit bin;
           default = bin;
         };
 
@@ -84,9 +72,6 @@
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
           inherit nativeBuildInputs;
-
-          inputsFrom = [ bin ];
-          buildInputs = with pkgs; [ docker dive neofetch ];
         };
       });
 }
