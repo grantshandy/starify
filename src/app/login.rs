@@ -1,16 +1,22 @@
-use http::{header, HeaderValue, StatusCode};
 use leptos::*;
 use leptos_router::*;
-use time::{Duration, OffsetDateTime};
 
-pub const CLIENT_ID: &str = env!("SPOTIFY_CLIENT_ID");
-pub const SECRET: &str = env!("SPOTIFY_CLIENT_SECRET");
+cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    use http::{header, HeaderValue, StatusCode};
+    use time::{Duration, OffsetDateTime};
+    use rspotify::Credentials;
 
-pub const SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
-pub const REDIRECT_URI: &str = concat!("http://", env!("LEPTOS_SITE_ADDR"), "/callback");
-const DOMAIN: &str = "127.0.0.1";
 
-const LOGIN_STATE_KEY: &str = "login_state";
+    const SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
+    const LOGIN_STATE_KEY: &str = "login_state";
+
+    fn get_domain() -> String {
+        use_context::<crate::Domain>()
+            .expect("no domain provided")
+            .0
+    }
+}}
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
@@ -29,13 +35,9 @@ pub fn LoginPage() -> impl IntoView {
 /// to the state-passthrough to the URL & client cookie to validate.
 #[server(Login)]
 async fn get_login_url() -> Result<String, ServerFnError> {
-    let now = OffsetDateTime::now_utc();
-    let state = now.unix_timestamp().to_string();
-
     #[cfg(feature = "ssr")]
     {
-        use axum_extra::extract::cookie::{Cookie, SameSite};
-        use http::header::{self, HeaderValue};
+        let state = OffsetDateTime::now_utc().unix_timestamp().to_string();
 
         expect_context::<leptos_axum::ResponseOptions>().insert_header(
             header::SET_COOKIE,
@@ -44,15 +46,22 @@ async fn get_login_url() -> Result<String, ServerFnError> {
                     .max_age(Duration::hours(1))
                     .path("/")
                     .same_site(SameSite::None)
-                    .domain(DOMAIN)
+                    .domain(get_domain())
                     .finish()
                     .to_string(),
             )
             .expect("create cookie HeaderValue"),
         );
-    }
 
-    return Ok(format!("https://accounts.spotify.com/authorize?response_type=code&client_id={CLIENT_ID}&scope={}&redirect_uri={REDIRECT_URI}&state={state}", SCOPES.join("%20")));
+        let spotify_credentials =
+            use_context::<Credentials>().expect("no spotify credentials provided");
+        let leptos_options = use_context::<LeptosOptions>().expect("no leptos options provided");
+
+        let redirect_uri = format!("http://{}/callback", leptos_options.site_addr);
+        let client_id = spotify_credentials.id;
+
+        return Ok(format!("https://accounts.spotify.com/authorize?response_type=code&client_id={client_id}&scope={}&redirect_uri={redirect_uri}&state={state}", SCOPES.join("%20")));
+    }
 }
 
 #[component]
@@ -119,7 +128,7 @@ async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
                     .expires(OffsetDateTime::UNIX_EPOCH)
                     .path("/")
                     .same_site(SameSite::None)
-                    .domain(DOMAIN)
+                    .domain(get_domain())
                     .finish()
                     .to_string(),
             )
