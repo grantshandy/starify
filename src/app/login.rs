@@ -3,12 +3,11 @@ use leptos_router::*;
 
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
     use axum_extra::extract::cookie::{Cookie, SameSite};
+    use rspotify::Credentials;
+    use crate::Scopes;
     use http::{header, HeaderValue, StatusCode};
     use time::{Duration, OffsetDateTime};
-    use rspotify::Credentials;
 
-
-    const SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
     const LOGIN_STATE_KEY: &str = "login_state";
 
     fn get_domain() -> String {
@@ -53,14 +52,22 @@ async fn get_login_url() -> Result<String, ServerFnError> {
             .expect("create cookie HeaderValue"),
         );
 
-        let spotify_credentials =
-            use_context::<Credentials>().expect("no spotify credentials provided");
-        let leptos_options = use_context::<LeptosOptions>().expect("no leptos options provided");
+        let redirect_uri = format!(
+            "http://{}/callback",
+            use_context::<LeptosOptions>()
+                .expect("no leptos options provided")
+                .site_addr
+        );
 
-        let redirect_uri = format!("http://{}/callback", leptos_options.site_addr);
-        let client_id = spotify_credentials.id;
+        let client_id = use_context::<Credentials>()
+            .expect("no spotify credentials provided")
+            .id;
 
-        return Ok(format!("https://accounts.spotify.com/authorize?response_type=code&client_id={client_id}&scope={}&redirect_uri={redirect_uri}&state={state}", SCOPES.join("%20")));
+        let scopes = use_context::<Scopes>()
+            .expect("no spotify scopes provided")
+            .url_encoded_string();
+
+        return Ok(format!("https://accounts.spotify.com/authorize?response_type=code&client_id={client_id}&scope={scopes}&redirect_uri={redirect_uri}&state={state}"));
     }
 }
 
@@ -77,7 +84,7 @@ pub fn LoginCallback() -> impl IntoView {
             {match res.as_ref() {
                 Err(err) => error_msg(&err.to_string()),
                 Ok(None) => error_msg("Login Link Expired"),
-                Ok(Some(code)) => view!{ <p>"yay! "</p><p>{code}</p> }.into_view(),
+                Ok(Some(_)) => view!{ <p>"redirecting... you shouldn't see this"</p> }.into_view(),
             }}
         </Await>
         <A href="/">"Return to Main Page"</A>

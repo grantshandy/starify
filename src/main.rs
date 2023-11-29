@@ -11,8 +11,8 @@ use axum::{
 use color_eyre::eyre;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 
-use musiscope::{app::App, AppState, Domain};
-use rspotify::Credentials;
+use musiscope::{app::App, AppState, Domain, Scopes};
+use rspotify::{Credentials, scopes};
 
 /// CLI for musiscope
 #[derive(argh::FromArgs)]
@@ -60,6 +60,7 @@ async fn main() -> eyre::Result<()> {
                     .unwrap_or(env::var("SPOTIFY_CLIENT_SECRET")?),
             ),
         },
+        spotify_scopes: Scopes(scopes!("user-top-read", "user-follow-read")),
         domain: Domain(
             args.domain.unwrap_or(
                 conf.leptos_options
@@ -122,11 +123,7 @@ async fn leptos_routes_handler(
     let handler = leptos_axum::render_route_with_context(
         app_state.leptos_options.clone(),
         app_state.routes.clone(),
-        move || {
-            leptos::provide_context(app_state.spotify_credentials.clone());
-            leptos::provide_context(app_state.leptos_options.clone());
-            leptos::provide_context(app_state.domain.clone());
-        },
+        move || provide_state_context(app_state.clone()),
         App,
     );
 
@@ -144,12 +141,15 @@ async fn server_fn_handler(
         path,
         headers,
         raw_query,
-        move || {
-            leptos::provide_context(app_state.spotify_credentials.clone());
-            leptos::provide_context(app_state.leptos_options.clone());
-            leptos::provide_context(app_state.domain.clone());
-        },
+        move || provide_state_context(app_state.clone()),
         req,
     )
     .await
+}
+
+fn provide_state_context(app_state: AppState) {
+    leptos::provide_context(app_state.spotify_credentials);
+    leptos::provide_context(app_state.spotify_scopes);
+    leptos::provide_context(app_state.leptos_options);
+    leptos::provide_context(app_state.domain);
 }
