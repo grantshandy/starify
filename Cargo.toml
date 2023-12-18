@@ -88,6 +88,5 @@ tailwind-input-file = "src/input.css"
 bin-features = ["ssr"]
 bin-profile-release = "server-release"
 
-lib-profile-release = "wasm-release"
 lib-features = ["hydrate"]
-
+lib-profile-release = "wasm-release"

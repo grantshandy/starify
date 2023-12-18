@@ -1,20 +1,15 @@
 use leptos::*;
 use leptos_router::*;
 
+
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
     use axum_extra::extract::cookie::{Cookie, SameSite};
-    use rspotify::Credentials;
-    use crate::Scopes;
+    use rspotify::{AuthCodeSpotify, Config, OAuth, scopes, Credentials};
     use http::{header, HeaderValue, StatusCode};
     use time::{Duration, OffsetDateTime};
 
+    const CALLBACK_ENDPOINT: &str = "/authorize";
     const LOGIN_STATE_KEY: &str = "login_state";
-
-    fn get_domain() -> String {
-        use_context::<crate::Domain>()
-            .expect("no domain provided")
-            .0
-    }
 }}
 
 #[component]
@@ -25,7 +20,7 @@ pub fn LoginPage() -> impl IntoView {
             future=|| get_login_url()
             let:url_result
         >
-            <a href=url_result.as_ref().expect("get login URL").to_owned()>"Login"</a>
+            <a class="btn" href=url_result.as_ref().expect("get login URL").to_owned()>"Login"</a>
         </Await>
     }
 }
@@ -37,6 +32,9 @@ async fn get_login_url() -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let state = OffsetDateTime::now_utc().unix_timestamp().to_string();
+        let site_addr = use_context::<LeptosOptions>()
+            .expect("no leptos options provided")
+            .site_addr;
 
         expect_context::<leptos_axum::ResponseOptions>().insert_header(
             header::SET_COOKIE,
@@ -45,29 +43,27 @@ async fn get_login_url() -> Result<String, ServerFnError> {
                     .max_age(Duration::hours(1))
                     .path("/")
                     .same_site(SameSite::None)
-                    .domain(get_domain())
+                    .domain(site_addr.ip().to_string())
                     .finish()
                     .to_string(),
             )
             .expect("create cookie HeaderValue"),
         );
 
-        let redirect_uri = format!(
-            "http://{}/callback",
-            use_context::<LeptosOptions>()
-                .expect("no leptos options provided")
-                .site_addr
-        );
+        let creds = use_context::<Credentials>().expect("no spotify credentials provided");
+        let oauth = OAuth {
+            redirect_uri: format!("http://{site_addr}{CALLBACK_ENDPOINT}"),
+            state,
+            scopes: scopes!("user-top-read", "user-follow-read"),
+            ..Default::default()
+        };
+        let config = Config {
+            token_cached: false,
+            ..Default::default()
+        };
 
-        let client_id = use_context::<Credentials>()
-            .expect("no spotify credentials provided")
-            .id;
-
-        let scopes = use_context::<Scopes>()
-            .expect("no spotify scopes provided")
-            .url_encoded_string();
-
-        return Ok(format!("https://accounts.spotify.com/authorize?response_type=code&client_id={client_id}&scope={scopes}&redirect_uri={redirect_uri}&state={state}"));
+        let spotify = AuthCodeSpotify::with_config(creds, oauth, config);
+        return Ok(spotify.get_authorize_url(true).expect("Client Error"));
     }
 }
 
@@ -84,7 +80,7 @@ pub fn LoginCallback() -> impl IntoView {
             {match res.as_ref() {
                 Err(err) => error_msg(&err.to_string()),
                 Ok(None) => error_msg("Login Link Expired"),
-                Ok(Some(_)) => view!{ <p>"redirecting... you shouldn't see this"</p> }.into_view(),
+                Ok(Some(code)) => view!{ <p>{code}</p> }.into_view(),
             }}
         </Await>
         <A href="/">"Return to Main Page"</A>
@@ -127,6 +123,10 @@ async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
             Err(_) => StatusCode::BAD_REQUEST,
         });
 
+        let site_addr = use_context::<LeptosOptions>()
+            .expect("no leptos options provided")
+            .site_addr;
+
         // set the LOGIN_STATE_KEY as null and set the expiration date to zero so the browser removes it.
         expect_context::<leptos_axum::ResponseOptions>().insert_header(
             header::SET_COOKIE,
@@ -135,7 +135,7 @@ async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
                     .expires(OffsetDateTime::UNIX_EPOCH)
                     .path("/")
                     .same_site(SameSite::None)
-                    .domain(get_domain())
+                    .domain(site_addr.ip().to_string())
                     .finish()
                     .to_string(),
             )
@@ -144,7 +144,6 @@ async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
 
         if let Ok(Some(code)) = &res {
             tracing::info!("got it! {code}");
-            leptos_axum::redirect("/about");
         }
 
         return res;

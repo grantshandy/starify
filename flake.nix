@@ -24,6 +24,16 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
+
+        tailwindcss = pkgs.nodePackages.tailwindcss.overrideAttrs
+          (oa: {
+            plugins = [
+              pkgs.nodePackages."@tailwindcss/aspect-ratio"
+              pkgs.nodePackages."@tailwindcss/forms"
+              pkgs.nodePackages."@tailwindcss/line-clamp"
+              pkgs.nodePackages."@tailwindcss/typography"
+            ];
+          });
         
         rustToolchain =
           pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -36,7 +46,8 @@
             filter = path: type:
               (hasSuffix ".html" path) || (hasSuffix ".css" path) || (hasSuffix ".env" path)
               || (hasInfix "/assets/" path)
-              || (hasSuffix "tailwind.config.js" path)
+              || (hasSuffix ".js" path)
+              || (hasSuffix ".json" path)
               || (craneLib.filterCargoSources path type);
           };
 
@@ -46,6 +57,8 @@
           cargo-leptos
           tailwindcss
           binaryen
+          nodejs_latest
+          dgraph
         ];
 
         commonArgs = { inherit src nativeBuildInputs; };
@@ -53,7 +66,6 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         bin = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
-
           buildPhaseCargoCommand = "cargo leptos build --release -vvv";
           cargoTestCommand = "cargo leptos test --release -vvv";
           cargoExtraArgs = "";

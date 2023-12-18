@@ -4,7 +4,10 @@ use leptos_router::*;
 
 mod login;
 
-use crate::error_template::{AppError, ErrorTemplate};
+use crate::{
+    error_template::{AppError, ErrorTemplate},
+    CALLBACK_ENDPOINT,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -20,16 +23,16 @@ pub fn App() -> impl IntoView {
                 <ErrorTemplate outside_errors />
             }.into_view()
         }>
-            <div class="space-y-3 flex-col">
-                <main class="p-2 bg-slate-700 rounded-md">
+            <div>
+                <main>
                     <Routes>
                         <Route
-                            path=""
+                            path="/"
                             view=login::LoginPage
                             ssr=SsrMode::Async
                         />
                         <Route
-                            path="/callback"
+                            path=CALLBACK_ENDPOINT
                             view=login::LoginCallback
                             ssr=SsrMode::Async
                         />

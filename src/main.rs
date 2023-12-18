@@ -11,8 +11,8 @@ use axum::{
 use color_eyre::eyre;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 
-use musiscope::{app::App, AppState, Domain, Scopes};
-use rspotify::{Credentials, scopes};
+use musiscope::{app::App, AppState};
+use rspotify::Credentials;
 
 /// CLI for musiscope
 #[derive(argh::FromArgs)]
@@ -60,18 +60,6 @@ async fn main() -> eyre::Result<()> {
                     .unwrap_or(env::var("SPOTIFY_CLIENT_SECRET")?),
             ),
         },
-        spotify_scopes: Scopes(scopes!("user-top-read", "user-follow-read")),
-        domain: Domain(
-            args.domain.unwrap_or(
-                conf.leptos_options
-                    .site_addr
-                    .to_string()
-                    .split_once(":")
-                    .unwrap()
-                    .0
-                    .to_string(),
-            ),
-        ),
     };
 
     let router = Router::new()
@@ -149,7 +137,5 @@ async fn server_fn_handler(
 
 fn provide_state_context(app_state: AppState) {
     leptos::provide_context(app_state.spotify_credentials);
-    leptos::provide_context(app_state.spotify_scopes);
     leptos::provide_context(app_state.leptos_options);
-    leptos::provide_context(app_state.domain);
 }
