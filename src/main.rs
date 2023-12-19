@@ -22,7 +22,7 @@ use tower::ServiceBuilder;
 
 use musiscope::{
     app::App,
-    auth::{self, Backend},
+    auth::{self, Backend, AuthSession},
     AppState, CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
 };
 
@@ -147,13 +147,16 @@ async fn static_handler(
 }
 
 async fn leptos_routes_handler(
+    session: AuthSession,
     State(app_state): State<AppState>,
     req: Request<AxumBody>,
 ) -> impl IntoResponse {
+    tracing::info!("{session:?}");
+
     let handler = leptos_axum::render_route_with_context(
         app_state.leptos_options.clone(),
         app_state.routes.clone(),
-        move || provide_state_context(app_state.clone()),
+        move || provide_state_context(&session, &app_state),
         App,
     );
 
@@ -161,6 +164,7 @@ async fn leptos_routes_handler(
 }
 
 async fn server_fn_handler(
+    session: AuthSession,
     State(app_state): State<AppState>,
     path: Path<String>,
     headers: HeaderMap,
@@ -171,13 +175,14 @@ async fn server_fn_handler(
         path,
         headers,
         raw_query,
-        move || provide_state_context(app_state.clone()),
+        move || provide_state_context(&session, &app_state),
         req,
     )
     .await
 }
 
-fn provide_state_context(app_state: AppState) {
-    leptos::provide_context(app_state.spotify_credentials);
-    leptos::provide_context(app_state.leptos_options);
+fn provide_state_context(session: &AuthSession, app_state: &AppState) {
+    leptos::provide_context(app_state.spotify_credentials.clone());
+    leptos::provide_context(app_state.leptos_options.clone());
+    leptos::provide_context(session.clone());
 }

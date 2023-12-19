@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -8,14 +9,14 @@ use thiserror::Error;
 
 use axum::{
     extract::{Query, State},
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use axum_login::{AuthUser, AuthnBackend, UserId};
 use http::{header, HeaderValue, StatusCode};
-use rspotify::{clients::OAuthClient, model::PrivateUser, AuthCodeSpotify, Config, OAuth};
+use rspotify::{clients::OAuthClient, model::PrivateUser, AuthCodeSpotify};
 
-use crate::{AppState, CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES};
+use crate::{AppState, User, LOGIN_STATE_KEY};
 
 #[derive(serde::Deserialize, Debug)]
 pub struct CallbackQuery {
@@ -43,20 +44,25 @@ pub async fn authorize(
             .into_response();
     };
 
-    auth_session.authenticate(Credentials {
-        code: query.code.clone().unwrap(),
-    }).await.expect("authenticate");
+    let user = match auth_session
+        .authenticate(Credentials {
+            code: query.code.clone().unwrap(),
+        })
+        .await {
+            Ok(Some(user)) => user,
+            _ => return Redirect::to("/").into_response(),
+        };
+
+    if auth_session.login(&user).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
 
     return (
         StatusCode::SEE_OTHER,
         jar.remove(Cookie::named(LOGIN_STATE_KEY)),
-        [(header::LOCATION, HeaderValue::from_static("/"))],
-    )
-        .into_response();
+        [(header::LOCATION, HeaderValue::from_static("/me"))],
+    ).into_response();
 }
-
-#[derive(Debug, Clone)]
-pub struct User(pub PrivateUser);
 
 impl AuthUser for User {
     type Id = rspotify::model::idtypes::UserId<'static>;
@@ -84,7 +90,7 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct Backend {
     client: AuthCodeSpotify,
-    db: Arc<RwLock<HashMap<UserId<Self>, PrivateUser>>>,
+    db: Arc<RwLock<HashMap<UserId<Self>, User>>>,
 }
 
 impl Backend {
@@ -111,20 +117,21 @@ impl AuthnBackend for Backend {
             .await
             .map_err(|err| Error::Spotify(err))?;
 
-        let user = User(self
-            .client
-            .current_user()
-            .await
-            .map_err(|err| Error::Spotify(err))?);
+        let user = User(
+            self.client
+                .current_user()
+                .await
+                .map_err(|err| Error::Spotify(err))?,
+        );
 
         let db = &mut self.db.write().unwrap();
-        db.insert(user);
+        db.insert(user.id().clone(), user.clone());
 
         Ok(Some(user))
     }
 
-    async fn get_user(&self, _user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
-        todo!()
+    async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
+        Ok(self.db.read().unwrap().get(user_id).cloned())
     }
 }
 

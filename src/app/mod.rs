@@ -5,8 +5,8 @@ use leptos_router::*;
 mod login;
 
 use crate::{
+    User,
     errors::{AppError, ErrorTemplate},
-    CALLBACK_ENDPOINT,
 };
 
 #[component]
@@ -31,6 +31,7 @@ pub fn App() -> impl IntoView {
                         ssr=SsrMode::Async
                     />
                     <Route path="/about" view=AboutPage />
+                    <Route path="/me" view=Me />
                 </Routes>
                 <footer class="footer footer-center p-4 bg-base-300 text-base-content">
                     <aside>
@@ -50,4 +51,42 @@ pub fn AboutPage() -> impl IntoView {
             <A href="/">"Back to Home"</A>
         </div>
     }
+}
+
+#[component]
+pub fn Me() -> impl IntoView {
+    view! {
+        <div class="grow">
+            <h1>"You:"</h1>
+            <Await
+                future=|| me()
+                let:res
+            >
+                {match res.as_ref() {
+                    Ok(Some(me)) => {
+                        let me = me.0.clone();
+
+                        view! {
+                            <img src={&me.images.unwrap()[0].url}></img>
+                            <p>"Name: " {me.display_name.unwrap_or("no display name".to_string())}</p>
+                        }.into_view()
+                    },
+                    Ok(None) => view! { <p>"Not Logged In"</p> }.into_view(),
+                    Err(err) => view! { <p>"Error " {err.to_string()}</p> }.into_view()
+                }}
+            </Await>
+            <A href="/">"Back to Home"</A>
+        </div>
+    }
+}
+
+#[server(GetMe)]
+async fn me() -> Result<Option<User>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    return Ok(use_context::<crate::auth::AuthSession>()
+        .expect("provide auth session")
+        .user);
+
+    #[cfg(not(feature = "ssr"))]
+    return Ok(None);
 }
