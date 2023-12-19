@@ -1,7 +1,12 @@
 pub mod app;
-pub mod error_template;
+pub mod errors;
+
+#[cfg(feature = "ssr")]
+pub mod auth;
 
 pub const CALLBACK_ENDPOINT: &str = "/authorize";
+pub const LOGIN_STATE_KEY: &str = "login_state";
+pub const SPOTIFY_SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
 
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
     use axum::extract::FromRef;

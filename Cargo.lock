@@ -1906,6 +1906,7 @@ name = "musiscope"
 version = "0.1.0"
 dependencies = [
  "argh",
+ "async-trait",
  "axum 0.6.20",
  "axum-extra",
  "axum-login",
@@ -1919,6 +1920,7 @@ dependencies = [
  "leptos_meta",
  "leptos_router",
  "mime_guess",
+ "oauth2",
  "rspotify",
  "rust-embed",
  "serde",
@@ -1926,6 +1928,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "tracing-subscriber-wasm",
@@ -1969,6 +1972,26 @@ checksum = "4161fcb6d602d4d2081af7c3a45852d875a03dd337a6bfdd6e06407b61342a43"
 dependencies = [
  "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "oauth2"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c38841cdd844847e3e7c8d29cef9dcfed8877f8f56f9071f77843ecf3baf937f"
+dependencies = [
+ "base64 0.13.1",
+ "chrono",
+ "getrandom",
+ "http 0.2.11",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "sha2",
+ "thiserror",
+ "url",
 ]
 
 [[package]]
@@ -3534,6 +3557,7 @@ dependencies = [
  "form_urlencoded",
  "idna 0.4.0",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

@@ -1,27 +1,42 @@
+use std::collections::HashSet;
+
+use cfg_if::cfg_if;
 use leptos::*;
 use leptos_router::*;
 
+use crate::{
+    errors::{AppError, ErrorTemplate},
+    CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES,
+};
 
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
     use axum_extra::extract::cookie::{Cookie, SameSite};
     use rspotify::{AuthCodeSpotify, Config, OAuth, scopes, Credentials};
-    use http::{header, HeaderValue, StatusCode};
+    use http::{header, HeaderValue};
     use time::{Duration, OffsetDateTime};
-
-    const CALLBACK_ENDPOINT: &str = "/authorize";
-    const LOGIN_STATE_KEY: &str = "login_state";
 }}
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
     view! {
-        <h1>"Login Page"</h1>
-        <Await
-            future=|| get_login_url()
-            let:url_result
-        >
-            <a class="btn" href=url_result.as_ref().expect("get login URL").to_owned()>"Login"</a>
-        </Await>
+        <div class="grow hero">
+            <div class="hero-content flex-col lg:flex-row-reverse">
+                <img src="https://static.observableusercontent.com/thumbnail/58460abd4408b66660e76009e84ac91f2f27bb2ab789c09512cffe13ffe48725.jpg" class="max-w-sm rounded-lg shadow-2xl" />
+                <div class="space-y-6">
+                    <h1 class="text-5xl font-bold">"Musiscope"</h1>
+                    <p>"View Artists in Constellations"</p>
+                    <div class="flow-root">
+                        <Await
+                            future=|| get_login_url()
+                            let:url_result
+                        >
+                            <a class="float-left btn btn-primary" href=url_result.as_ref().expect("get login URL")>"Link to Spotify"</a>
+                        </Await>
+                        <A href="/about" class="float-right btn">"About"</A>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 }
 
@@ -54,7 +69,7 @@ async fn get_login_url() -> Result<String, ServerFnError> {
         let oauth = OAuth {
             redirect_uri: format!("http://{site_addr}{CALLBACK_ENDPOINT}"),
             state,
-            scopes: scopes!("user-top-read", "user-follow-read"),
+            scopes: HashSet::from(SPOTIFY_SCOPES.map(|s| s.into())),
             ..Default::default()
         };
         let config = Config {
@@ -64,88 +79,5 @@ async fn get_login_url() -> Result<String, ServerFnError> {
 
         let spotify = AuthCodeSpotify::with_config(creds, oauth, config);
         return Ok(spotify.get_authorize_url(true).expect("Client Error"));
-    }
-}
-
-#[component]
-pub fn LoginCallback() -> impl IntoView {
-    let error_msg =
-        move |msg: &str| view! { <p>"Error logging in: " {msg.to_string()}</p> }.into_view();
-
-    view! {
-        <Await
-            future=|| validate_login_callback()
-            let:res
-        >
-            {match res.as_ref() {
-                Err(err) => error_msg(&err.to_string()),
-                Ok(None) => error_msg("Login Link Expired"),
-                Ok(Some(code)) => view!{ <p>{code}</p> }.into_view(),
-            }}
-        </Await>
-        <A href="/">"Return to Main Page"</A>
-    }
-}
-
-/// This is the endpoint spotify redirects back to with the code & previous state value after authentication.
-/// From here, we error out or redirect back to the main page, registering the client in the database.
-#[server(LoginCallBack)]
-async fn validate_login_callback() -> Result<Option<String>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use axum::extract::Query;
-        use axum_extra::extract::{
-            cookie::{Cookie, SameSite},
-            CookieJar,
-        };
-
-        #[derive(serde::Deserialize, Debug)]
-        struct CallbackQuery {
-            pub code: String,
-            pub state: i64,
-        }
-
-        let res = leptos_axum::extract(|query: Query<CallbackQuery>, jar: CookieJar| async move {
-            jar.get(LOGIN_STATE_KEY)
-                .map(|s| s.value())
-                .map(|s| s.parse::<i64>().ok())
-                .flatten()
-                .is_some_and(|cookie_state| cookie_state == query.state)
-                .then(|| query.code.to_owned())
-        })
-        .await
-        .map_err(|err| ServerFnError::ServerError(format!("Could not extract query: {err:?}")));
-
-        // set the page status code depending on the status of the state validation
-        expect_context::<leptos_axum::ResponseOptions>().set_status(match &res {
-            Ok(Some(_)) => StatusCode::FOUND,
-            Ok(None) => StatusCode::GONE,
-            Err(_) => StatusCode::BAD_REQUEST,
-        });
-
-        let site_addr = use_context::<LeptosOptions>()
-            .expect("no leptos options provided")
-            .site_addr;
-
-        // set the LOGIN_STATE_KEY as null and set the expiration date to zero so the browser removes it.
-        expect_context::<leptos_axum::ResponseOptions>().insert_header(
-            header::SET_COOKIE,
-            HeaderValue::from_str(
-                &Cookie::build(LOGIN_STATE_KEY, "")
-                    .expires(OffsetDateTime::UNIX_EPOCH)
-                    .path("/")
-                    .same_site(SameSite::None)
-                    .domain(site_addr.ip().to_string())
-                    .finish()
-                    .to_string(),
-            )
-            .expect("create cookie HeaderValue"),
-        );
-
-        if let Ok(Some(code)) = &res {
-            tracing::info!("got it! {code}");
-        }
-
-        return res;
     }
 }

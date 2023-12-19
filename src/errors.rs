@@ -1,21 +1,28 @@
 use cfg_if::cfg_if;
 use http::status::StatusCode;
-use leptos::*;
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
+
+use leptos::*;
+use leptos_router::*;
 
 #[cfg(feature = "ssr")]
 use leptos_axum::ResponseOptions;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, Serialize, Deserialize)]
 pub enum AppError {
     #[error("Not Found")]
     NotFound,
+
+    #[error("Failure to authenticate: {0}.")]
+    Authentication(String)
 }
 
 impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             AppError::NotFound => StatusCode::NOT_FOUND,
+            AppError::Authentication(_) => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -53,21 +60,27 @@ pub fn ErrorTemplate(
     }}
 
     view! {
-        <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
-        <For
-            // a function that returns the items we're iterating over; a signal is fine
-            each= move || {errors.clone().into_iter().enumerate()}
-            // a unique key for each item as a reference
-            key=|(index, _error)| *index
-            // renders each item to a view
-            children=move |error| {
-                let error_string = error.1.to_string();
-                let error_code= error.1.status_code();
-                view! {
-                    <h2>{error_code.to_string()}</h2>
-                    <p>"Error: " {error_string}</p>
-                }
-            }
-        />
+        <div class="grow hero">
+            <div class="hero-content text-center">
+                <div class="max-w-md space-y-6">
+                    <h1 class="text-5xl font-bold">"Error: " { errors[0].status_code().to_string() }</h1>
+                    <p class="bg-base-300 rounded-md p-2">
+                        <code>{ errors[0].to_string() }</code>
+                    </p>
+                    <For
+                        each= move || {errors.clone().into_iter().enumerate().skip(1)}
+                        key=|(index, _error)| *index
+                        children=move |error| view! {
+                            <div class="alert alert-error">
+                                <span>"Error " {error.1.status_code().to_string()}</span>
+                            </div>
+                        }
+                    />
+                    <p>
+                        <A href="/">"Return to Main Page?"</A>
+                    </p>
+                </div>
+            </div>
+        </div>
     }
 }

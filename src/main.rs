@@ -2,17 +2,30 @@ use std::{env, net::SocketAddr};
 
 use axum::{
     body::Body as AxumBody,
+    error_handling::HandleErrorLayer,
     extract::{Path, RawQuery, State},
     http::{header, HeaderMap, Request, Uri},
     response::IntoResponse,
     routing::get,
-    Router,
+    BoxError, Router,
+};
+use axum_login::{
+    tower_sessions::{Expiry, MemoryStore, SessionManagerLayer, cookie::SameSite},
+    AuthManagerLayerBuilder,
 };
 use color_eyre::eyre;
+use http::StatusCode;
 use leptos_axum::{generate_route_list, LeptosRoutes};
-
-use musiscope::{app::App, AppState};
 use rspotify::Credentials;
+use time::Duration;
+use tower::ServiceBuilder;
+
+use musiscope::{
+    app::App,
+    auth::{self, Backend},
+    AppState, CALLBACK_ENDPOINT,
+};
+
 
 /// CLI for musiscope
 #[derive(argh::FromArgs)]
@@ -20,10 +33,16 @@ struct Args {
     #[argh(option, description = "socket to serve on")]
     socket: Option<SocketAddr>,
 
-    #[argh(option, description = "spotify client id (also set through SPOTIFY_CLIENT_ID)")]
+    #[argh(
+        option,
+        description = "spotify client id (also set through SPOTIFY_CLIENT_ID)"
+    )]
     client_id: Option<String>,
 
-    #[argh(option, description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)")]
+    #[argh(
+        option,
+        description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)"
+    )]
     client_secret: Option<String>,
 
     #[argh(
@@ -62,7 +81,14 @@ async fn main() -> eyre::Result<()> {
         },
     };
 
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_same_site(SameSite::Lax)
+        .with_expiry(Expiry::OnInactivity(Duration::days(1)));
+
     let router = Router::new()
+        .route(CALLBACK_ENDPOINT, get(auth::authorize))
         .route(
             "/api/*fn_name",
             get(server_fn_handler).post(server_fn_handler),

@@ -5,7 +5,7 @@ use leptos_router::*;
 mod login;
 
 use crate::{
-    error_template::{AppError, ErrorTemplate},
+    errors::{AppError, ErrorTemplate},
     CALLBACK_ENDPOINT,
 };
 
@@ -23,23 +23,20 @@ pub fn App() -> impl IntoView {
                 <ErrorTemplate outside_errors />
             }.into_view()
         }>
-            <div>
-                <main>
-                    <Routes>
-                        <Route
-                            path="/"
-                            view=login::LoginPage
-                            ssr=SsrMode::Async
-                        />
-                        <Route
-                            path=CALLBACK_ENDPOINT
-                            view=login::LoginCallback
-                            ssr=SsrMode::Async
-                        />
-                        <Route path="/about" view=AboutPage />
-                    </Routes>
-                </main>
-                <footer class="italic mx-auto">"© 2023 Grant Handy"</footer>
+            <div data-theme="light" class="min-h-screen flex flex-col">
+                <Routes>
+                    <Route
+                        path="/"
+                        view=login::LoginPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route path="/about" view=AboutPage />
+                </Routes>
+                <footer class="footer footer-center p-4 bg-base-300 text-base-content">
+                    <aside>
+                        <p>"Copyright © 2023 Grant Handy"</p>
+                    </aside>
+                </footer>
             </div>
         </Router>
     }
@@ -48,7 +45,9 @@ pub fn App() -> impl IntoView {
 #[component]
 pub fn AboutPage() -> impl IntoView {
     view! {
-        <h1>"About!"</h1>
-        <A href="/">"Back to Home"</A>
+        <div class="grow">
+            <h1>"About!"</h1>
+            <A href="/">"Back to Home"</A>
+        </div>
     }
 }
