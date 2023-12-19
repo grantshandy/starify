@@ -151,8 +151,6 @@ async fn leptos_routes_handler(
     State(app_state): State<AppState>,
     req: Request<AxumBody>,
 ) -> impl IntoResponse {
-    tracing::info!("{session:?}");
-
     let handler = leptos_axum::render_route_with_context(
         app_state.leptos_options.clone(),
         app_state.routes.clone(),

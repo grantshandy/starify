@@ -8,8 +8,11 @@ pub const CALLBACK_ENDPOINT: &str = "/authorize";
 pub const LOGIN_STATE_KEY: &str = "login_state";
 pub const SPOTIFY_SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct User(pub rspotify::model::PrivateUser);
+#[derive(Debug, Clone)]
+pub struct User {
+    pub me: rspotify::model::PrivateUser,
+    pub client: rspotify::AuthCodeSpotify,
+}
 
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
     use axum::extract::FromRef;

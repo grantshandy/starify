@@ -1,22 +1,21 @@
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use std::{
     borrow::Borrow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, RwLock},
 };
 use thiserror::Error;
 
 use axum::{
-    extract::{Query, State},
+    extract::Query,
     response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use axum_login::{AuthUser, AuthnBackend, UserId};
 use http::{header, HeaderValue, StatusCode};
-use rspotify::{clients::OAuthClient, model::PrivateUser, AuthCodeSpotify};
+use rspotify::{clients::OAuthClient, AuthCodeSpotify};
 
-use crate::{AppState, User, LOGIN_STATE_KEY};
+use crate::{User, LOGIN_STATE_KEY};
 
 #[derive(serde::Deserialize, Debug)]
 pub struct CallbackQuery {
@@ -26,7 +25,6 @@ pub struct CallbackQuery {
 
 pub async fn authorize(
     mut auth_session: AuthSession,
-    State(app_state): State<AppState>,
     query: Query<CallbackQuery>,
     jar: CookieJar,
 ) -> impl IntoResponse {
@@ -34,7 +32,7 @@ pub async fn authorize(
 
     if query.code.is_none()
         || state_cookie.is_none()
-        || &query.state.to_string() != state_cookie.unwrap().value()
+        || query.state.to_string() != state_cookie.unwrap().value()
     {
         return (
             StatusCode::SEE_OTHER,
@@ -48,10 +46,11 @@ pub async fn authorize(
         .authenticate(Credentials {
             code: query.code.clone().unwrap(),
         })
-        .await {
-            Ok(Some(user)) => user,
-            _ => return Redirect::to("/").into_response(),
-        };
+        .await
+    {
+        Ok(Some(user)) => user,
+        _ => return Redirect::to("/").into_response(),
+    };
 
     if auth_session.login(&user).await.is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -61,18 +60,19 @@ pub async fn authorize(
         StatusCode::SEE_OTHER,
         jar.remove(Cookie::named(LOGIN_STATE_KEY)),
         [(header::LOCATION, HeaderValue::from_static("/me"))],
-    ).into_response();
+    )
+        .into_response();
 }
 
 impl AuthUser for User {
     type Id = rspotify::model::idtypes::UserId<'static>;
 
     fn id(&self) -> Self::Id {
-        self.0.id.clone()
+        self.me.id.clone()
     }
 
     fn session_auth_hash(&self) -> &[u8] {
-        Borrow::<str>::borrow(&self.0.id).as_bytes()
+        Borrow::<str>::borrow(&self.me.id).as_bytes()
     }
 }
 
@@ -112,17 +112,20 @@ impl AuthnBackend for Backend {
         &self,
         creds: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
-        self.client
+        let client = self.client.clone();
+
+        client
             .request_token(&creds.code)
             .await
-            .map_err(|err| Error::Spotify(err))?;
+            .map_err(Error::Spotify)?;
 
-        let user = User(
-            self.client
+        let user = User {
+            me: client
                 .current_user()
                 .await
-                .map_err(|err| Error::Spotify(err))?,
-        );
+                .map_err(Error::Spotify)?,
+            client,
+        };
 
         let db = &mut self.db.write().unwrap();
         db.insert(user.id().clone(), user.clone());

@@ -1,20 +1,15 @@
-use std::collections::HashSet;
-
-use cfg_if::cfg_if;
 use leptos::*;
 use leptos_router::*;
 
-use crate::{
-    errors::{AppError, ErrorTemplate},
-    CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES,
+#[cfg(feature = "ssr")]
+use {
+    crate::{CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES},
+    axum_extra::extract::cookie::{Cookie, SameSite},
+    http::{header, HeaderValue},
+    rspotify::{AuthCodeSpotify, Config, Credentials, OAuth},
+    std::collections::HashSet,
+    time::{Duration, OffsetDateTime},
 };
-
-cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
-    use axum_extra::extract::cookie::{Cookie, SameSite};
-    use rspotify::{AuthCodeSpotify, Config, OAuth, scopes, Credentials};
-    use http::{header, HeaderValue};
-    use time::{Duration, OffsetDateTime};
-}}
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
@@ -27,7 +22,7 @@ pub fn LoginPage() -> impl IntoView {
                     <p>"View Artists in Constellations"</p>
                     <div class="flow-root">
                         <Await
-                            future=|| get_login_url()
+                            future=get_login_url
                             let:url_result
                         >
                             <a class="float-left btn btn-primary" href=url_result.as_ref().expect("get login URL")>"Link to Spotify"</a>

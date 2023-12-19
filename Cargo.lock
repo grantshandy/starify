@@ -1823,6 +1823,8 @@ dependencies = [
  "color-eyre",
  "console_error_panic_hook",
  "dgraph-tonic",
+ "futures",
+ "futures-util",
  "http",
  "leptos",
  "leptos_axum",
