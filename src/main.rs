@@ -1,31 +1,30 @@
-use std::{env, net::SocketAddr};
+use std::{collections::HashSet, env, net::SocketAddr};
 
 use axum::{
     body::Body as AxumBody,
     error_handling::HandleErrorLayer,
     extract::{Path, RawQuery, State},
+    http::StatusCode,
     http::{header, HeaderMap, Request, Uri},
     response::IntoResponse,
     routing::get,
     BoxError, Router,
 };
 use axum_login::{
-    tower_sessions::{Expiry, MemoryStore, SessionManagerLayer, cookie::SameSite},
+    tower_sessions::{cookie::SameSite, Expiry, MemoryStore, SessionManagerLayer},
     AuthManagerLayerBuilder,
 };
 use color_eyre::eyre;
-use http::StatusCode;
 use leptos_axum::{generate_route_list, LeptosRoutes};
-use rspotify::Credentials;
+use rspotify::{AuthCodeSpotify, Config, Credentials, OAuth};
 use time::Duration;
 use tower::ServiceBuilder;
 
 use musiscope::{
     app::App,
     auth::{self, Backend},
-    AppState, CALLBACK_ENDPOINT,
+    AppState, CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
 };
-
 
 /// CLI for musiscope
 #[derive(argh::FromArgs)]
@@ -44,12 +43,6 @@ struct Args {
         description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)"
     )]
     client_secret: Option<String>,
-
-    #[argh(
-        option,
-        description = "what domain the site is served on (defaults to socket)"
-    )]
-    domain: Option<String>,
 }
 
 #[tokio::main]
@@ -87,6 +80,22 @@ async fn main() -> eyre::Result<()> {
         .with_same_site(SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(Duration::days(1)));
 
+    let backend = Backend::new(AuthCodeSpotify::with_config(
+        app_state.spotify_credentials.clone(),
+        OAuth {
+            redirect_uri: format!(
+                "http://{}{CALLBACK_ENDPOINT}",
+                &app_state.leptos_options.site_addr
+            ),
+            scopes: HashSet::from(SPOTIFY_SCOPES.map(|s| s.into())),
+            ..Default::default()
+        },
+        Config {
+            token_cached: false,
+            ..Default::default()
+        },
+    ));
+
     let router = Router::new()
         .route(CALLBACK_ENDPOINT, get(auth::authorize))
         .route(
@@ -95,7 +104,14 @@ async fn main() -> eyre::Result<()> {
         )
         .leptos_routes_with_handler(routes, get(leptos_routes_handler))
         .fallback(static_handler)
-        .with_state(app_state);
+        .with_state(app_state)
+        .layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|_: BoxError| async {
+                    StatusCode::BAD_REQUEST
+                }))
+                .layer(AuthManagerLayerBuilder::new(backend, session_layer).build()),
+        );
 
     tracing::info!("Listening on http://{addr}/");
     axum::Server::bind(&addr)

@@ -1,5 +1,9 @@
 use async_trait::async_trait;
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 use thiserror::Error;
 
 use axum::{
@@ -9,7 +13,7 @@ use axum::{
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use axum_login::{AuthUser, AuthnBackend, UserId};
 use http::{header, HeaderValue, StatusCode};
-use rspotify::{clients::OAuthClient, AuthCodeSpotify, Config, OAuth};
+use rspotify::{clients::OAuthClient, model::PrivateUser, AuthCodeSpotify, Config, OAuth};
 
 use crate::{AppState, CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES};
 
@@ -20,6 +24,7 @@ pub struct CallbackQuery {
 }
 
 pub async fn authorize(
+    mut auth_session: AuthSession,
     State(app_state): State<AppState>,
     query: Query<CallbackQuery>,
     jar: CookieJar,
@@ -38,26 +43,9 @@ pub async fn authorize(
             .into_response();
     };
 
-    let creds = Credentials {
+    auth_session.authenticate(Credentials {
         code: query.code.clone().unwrap(),
-        spotify: AuthCodeSpotify::with_config(
-            app_state.spotify_credentials,
-            OAuth {
-                redirect_uri: format!(
-                    "http://{}{CALLBACK_ENDPOINT}",
-                    app_state.leptos_options.site_addr
-                ),
-                scopes: HashSet::from(SPOTIFY_SCOPES.map(|s| s.into())),
-                ..Default::default()
-            },
-            Config {
-                token_cached: false,
-                ..Default::default()
-            },
-        ),
-    };
-
-    tracing::info!("AUTHENTICATING NOW");
+    }).await.expect("authenticate");
 
     return (
         StatusCode::SEE_OTHER,
@@ -68,26 +56,23 @@ pub async fn authorize(
 }
 
 #[derive(Debug, Clone)]
-pub struct User {
-    id: String,
-}
+pub struct User(pub PrivateUser);
 
 impl AuthUser for User {
-    type Id = String;
+    type Id = rspotify::model::idtypes::UserId<'static>;
 
     fn id(&self) -> Self::Id {
-        self.id.to_owned()
+        self.0.id.clone()
     }
 
     fn session_auth_hash(&self) -> &[u8] {
-        self.id.as_bytes()
+        Borrow::<str>::borrow(&self.0.id).as_bytes()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Credentials {
     pub code: String,
-    pub spotify: AuthCodeSpotify,
 }
 
 #[derive(Debug, Error)]
@@ -96,8 +81,20 @@ pub enum Error {
     Spotify(rspotify::ClientError),
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct Backend;
+#[derive(Debug, Clone)]
+pub struct Backend {
+    client: AuthCodeSpotify,
+    db: Arc<RwLock<HashMap<UserId<Self>, PrivateUser>>>,
+}
+
+impl Backend {
+    pub fn new(client: AuthCodeSpotify) -> Self {
+        Self {
+            client,
+            db: Arc::new(RwLock::new(HashMap::default())),
+        }
+    }
+}
 
 #[async_trait]
 impl AuthnBackend for Backend {
@@ -109,11 +106,21 @@ impl AuthnBackend for Backend {
         &self,
         creds: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
-        if let Err(err) = creds.spotify.request_token(&creds.code).await {
-            return Err(Error::Spotify(err));
-        }
+        self.client
+            .request_token(&creds.code)
+            .await
+            .map_err(|err| Error::Spotify(err))?;
 
-        todo!()
+        let user = User(self
+            .client
+            .current_user()
+            .await
+            .map_err(|err| Error::Spotify(err))?);
+
+        let db = &mut self.db.write().unwrap();
+        db.insert(user);
+
+        Ok(Some(user))
     }
 
     async fn get_user(&self, _user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
