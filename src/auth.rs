@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     sync::{Arc, RwLock},
 };
@@ -65,14 +64,14 @@ pub async fn authorize(
 }
 
 impl AuthUser for User {
-    type Id = rspotify::model::idtypes::UserId<'static>;
+    type Id = String;
 
     fn id(&self) -> Self::Id {
-        self.me.id.clone()
+        self.id.clone()
     }
 
     fn session_auth_hash(&self) -> &[u8] {
-        Borrow::<str>::borrow(&self.me.id).as_bytes()
+        self.id.as_bytes()
     }
 }
 
@@ -87,6 +86,8 @@ pub enum Error {
     Spotify(rspotify::ClientError),
 }
 
+pub type AuthSession = axum_login::AuthSession<Backend>;
+
 #[derive(Debug, Clone)]
 pub struct Backend {
     client: AuthCodeSpotify,
@@ -99,6 +100,18 @@ impl Backend {
             client,
             db: Arc::new(RwLock::new(HashMap::default())),
         }
+    }
+
+    pub async fn user_client(&self, user: User) -> AuthCodeSpotify {
+        let client = self.client.clone();
+
+        *client.token.lock().await.unwrap() = Some(user.token);
+
+        client
+    }
+
+    pub fn client_base(&self) -> AuthCodeSpotify {
+        self.client.clone()
     }
 }
 
@@ -119,12 +132,21 @@ impl AuthnBackend for Backend {
             .await
             .map_err(Error::Spotify)?;
 
+        let me = client.current_user().await.map_err(Error::Spotify)?;
+
         let user = User {
-            me: client
-                .current_user()
+            token: client
+                .token
+                .lock()
                 .await
-                .map_err(Error::Spotify)?,
-            client,
+                .expect("unlock client token mutext")
+                .clone()
+                .expect("user should have token"),
+            display_name: me.display_name.unwrap_or("no display name".to_string()),
+            id: me.id.to_string(),
+            href: me.href,
+            followers: me.followers.map(|f| f.total).unwrap_or(0),
+            images: me.images.unwrap_or_default(),
         };
 
         let db = &mut self.db.write().unwrap();
@@ -134,8 +156,6 @@ impl AuthnBackend for Backend {
     }
 
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
-        Ok(self.db.read().unwrap().get(user_id).cloned())
+        Ok(self.db.read().expect("read database").get(user_id).cloned())
     }
 }
-
-pub type AuthSession = axum_login::AuthSession<Backend>;

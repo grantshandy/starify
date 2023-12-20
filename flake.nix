@@ -55,6 +55,7 @@
           rustToolchain
           pkg-config
           cargo-leptos
+          leptosfmt
           tailwindcss
           binaryen
           nodejs_latest

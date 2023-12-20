@@ -1,3 +1,5 @@
+use rspotify::{model::Image, Token};
+
 pub mod app;
 pub mod errors;
 
@@ -8,10 +10,14 @@ pub const CALLBACK_ENDPOINT: &str = "/authorize";
 pub const LOGIN_STATE_KEY: &str = "login_state";
 pub const SPOTIFY_SCOPES: [&str; 2] = ["user-top-read", "user-follow-read"];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct User {
-    pub me: rspotify::model::PrivateUser,
-    pub client: rspotify::AuthCodeSpotify,
+    pub token: Token,
+    pub display_name: String,
+    pub id: String,
+    pub href: String,
+    pub followers: u32,
+    pub images: Vec<Image>,
 }
 
 cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
@@ -46,3 +52,4 @@ pub fn hydrate() {
 
     leptos::mount_to_body(app::App);
 }
+
