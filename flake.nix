@@ -1,5 +1,5 @@
 {
-  description = "A basic devshell for developing musiscope.";
+  description = "A basic devshell for developing starify.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

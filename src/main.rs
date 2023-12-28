@@ -20,13 +20,13 @@ use rspotify::{AuthCodeSpotify, Config, Credentials, OAuth};
 use time::Duration;
 use tower::ServiceBuilder;
 
-use musiscope::{
+use starify::{
     app::App,
     auth::{self, Backend, AuthSession},
     AppState, CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
 };
 
-/// CLI for musiscope
+/// CLI for starify
 #[derive(argh::FromArgs)]
 struct Args {
     #[argh(option, description = "socket to serve on")]

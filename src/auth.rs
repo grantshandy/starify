@@ -39,7 +39,7 @@ pub async fn authorize(
             [(header::LOCATION, HeaderValue::from_static("/"))],
         )
             .into_response();
-    };
+    }
 
     let user = match auth_session
         .authenticate(Credentials {
@@ -159,3 +159,5 @@ impl AuthnBackend for Backend {
         Ok(self.db.read().expect("read database").get(user_id).cloned())
     }
 }
+
+

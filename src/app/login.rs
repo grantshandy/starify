@@ -10,12 +10,27 @@ use {
 
 #[component]
 pub fn SpotifyButton() -> impl IntoView {
+    let url = create_resource(|| (), |_| async move { get_login_url().await });
+
     view! {
-        <Await future=get_login_url let:url_result>
-            <a class="btn btn-primary" href=url_result.as_ref().expect("get login URL")>
-                "Link to Spotify"
-            </a>
-        </Await>
+        <Suspense fallback=|| {
+            view! { <span class="btn">"Loading Link..."</span> }
+        }>
+            {url
+                .get()
+                .map(|res| {
+                    res
+                        .map(|url| {
+                            view! {
+                                <a href=url class="btn btn-primary">
+                                    "Link to Spotify"
+                                </a>
+                            }
+                                .into_view()
+                        })
+                        .unwrap_or_default()
+                })}
+        </Suspense>
     }
 }
 
@@ -52,3 +67,4 @@ pub async fn get_login_url() -> Result<String, ServerFnError> {
         return Ok(spotify.get_authorize_url(true).expect("Client Error"));
     }
 }
+

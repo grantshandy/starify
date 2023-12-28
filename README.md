@@ -1,1 +1,1 @@
-# musiscope
+# starify

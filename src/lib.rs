@@ -2,6 +2,7 @@ use rspotify::{model::Image, Token};
 
 pub mod app;
 pub mod errors;
+pub mod client;
 
 #[cfg(feature = "ssr")]
 pub mod auth;
