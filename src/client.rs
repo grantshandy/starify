@@ -6,6 +6,11 @@ use rspotify::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "ssr")]
+lazy_static::lazy_static! {
+    static ref DB: sled::Db = sled::open(std::env::var("STARIFY_CACHE").unwrap_or("starify_cache".to_string())).expect("create database");
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PackedClient {
     client_id: String,

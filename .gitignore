@@ -3,3 +3,4 @@ target/
 .env
 result/
 node_modules/
+starify_cache/

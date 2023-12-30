@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, net::SocketAddr};
+use std::{collections::HashSet, env, net::SocketAddr, str::FromStr};
 
 use axum::{
     body::Body as AxumBody,
@@ -33,36 +33,15 @@ pub struct AppState {
     pub spotify_credentials: rspotify::Credentials,
 }
 
-/// CLI for starify
-#[derive(argh::FromArgs)]
-struct Args {
-    #[argh(option, description = "socket to serve on")]
-    socket: Option<SocketAddr>,
-
-    #[argh(
-        option,
-        description = "spotify client id (also set through SPOTIFY_CLIENT_ID)"
-    )]
-    client_id: Option<String>,
-
-    #[argh(
-        option,
-        description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)"
-    )]
-    client_secret: Option<String>,
-}
-
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
     color_eyre::install()?;
 
-    let args: Args = argh::from_env();
-
     // get leptos configuration from environment variables injected by cargo-leptos
     let mut conf = leptos::get_configuration(None).await.unwrap();
 
-    if let Some(socket) = args.socket {
+    if let Ok(Ok(socket)) = env::var("STARIFY_SOCKET").map(|var| SocketAddr::from_str(&var)) {
         conf.leptos_options.site_addr = socket;
     }
 
@@ -73,11 +52,14 @@ async fn main() -> eyre::Result<()> {
         leptos_options: conf.leptos_options.clone(),
         routes: routes.clone(),
         spotify_credentials: Credentials {
-            id: args.client_id.unwrap_or(env::var("SPOTIFY_CLIENT_ID")?),
-            secret: Some(
-                args.client_secret
-                    .unwrap_or(env::var("SPOTIFY_CLIENT_SECRET")?),
-            ),
+            id: match env::var("SPOTIFY_CLIENT_ID") {
+                Ok(var) => var,
+                Err(err) => return Err(eyre::anyhow!(err))
+            },
+            secret: match env::var("SPOTIFY_CLIENT_SECRET") {
+                Ok(var) => Some(var),
+                Err(err) => return Err(eyre::anyhow!(err))
+            },
         },
     };
 
