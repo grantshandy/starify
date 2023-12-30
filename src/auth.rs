@@ -3,14 +3,12 @@ use thiserror::Error;
 
 use axum::{
     extract::Query,
-    response::{IntoResponse, Redirect}, error_handling::HandleErrorLayer,
+    response::{IntoResponse, Redirect},
 };
-use axum_extra::extract::{cookie::{Cookie, SameSite}, CookieJar};
-use axum_login::{AuthUser, AuthnBackend, UserId, tower_sessions::{SessionManagerLayer, Expiry, MemoryStore}, AuthManagerLayerBuilder, AuthManagerLayer};
+use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_login::{AuthUser, AuthnBackend, UserId};
 use http::{header, HeaderValue, StatusCode};
 use rspotify::{clients::{OAuthClient, BaseClient}, AuthCodeSpotify, Token};
-use time::Duration;
-use tower::{ServiceBuilder, BoxError, Service};
 
 use crate::{LOGIN_STATE_KEY, client};
 

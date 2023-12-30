@@ -1,5 +1,5 @@
 use leptos::*;
-use rspotify::model::PrivateUser;
+use rspotify::model::{PrivateUser, TimeRange, FullArtist};
 
 cfg_if::cfg_if! {   
     if #[cfg(feature = "ssr")] {
@@ -51,3 +51,31 @@ pub async fn get_current_user() -> Result<Option<PrivateUser>, ServerFnError> {
     }
 }
 
+#[server]
+pub async fn get_top_artists(range: TimeRange) -> Result<Option<Vec<FullArtist>>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rspotify::clients::OAuthClient;
+        use futures_util::TryStreamExt;
+
+        let Some(user) = use_context::<AuthSession>()
+            .expect("no auth session provided")
+            .user else {
+                return Ok(None);
+            };
+
+        let topartists_key = format!("{}_topartists_{range:?}", user.user_id);
+
+        // get user from cache from user id
+        match get_from_db::<Vec<FullArtist>>(&topartists_key).await {
+            // if successful & exists, deserialize the result
+            Ok(Some(top)) => Ok(Some(top)),
+            _ => {
+                match user.client.current_user_top_artists(Some(range)).try_collect().await {
+                    Ok(top) => put_to_db::<Vec<FullArtist>>(&topartists_key, top).await.map_err(|err| ServerFnError::ServerError(format!("Error inserting into cache: {err}"))),
+                    Err(err) => Err(ServerFnError::ServerError(err.to_string())),
+                }
+            }
+        }
+    }
+}
