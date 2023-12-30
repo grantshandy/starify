@@ -1,89 +1,53 @@
-use std::{collections::HashSet, sync::Arc};
+use leptos::*;
+use rspotify::model::PrivateUser;
 
-use cfg_if::cfg_if;
-use rspotify::{
-    sync::Mutex, AuthCodeSpotify, Config, Credentials, OAuth, Token, ClientError, clients::OAuthClient, model::PrivateUser,
-};
-use serde::{Deserialize, Serialize};
+cfg_if::cfg_if! {   
+    if #[cfg(feature = "ssr")] {
+        use crate::auth::AuthSession;
+        use serde::{de::DeserializeOwned, Serialize};
 
-#[cfg(feature = "ssr")]
-lazy_static::lazy_static! {
-    static ref DB: sled::Db = sled::open(std::env::var("STARIFY_CACHE").unwrap_or("starify_cache".to_string())).expect("create database");
-}
+        lazy_static::lazy_static! {
+            pub static ref DATABASE: sled::Db = sled::open(std::env::var("STARIFY_CACHE").unwrap_or("starify_cache".to_string())).expect("create database");
+        }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PackedClient {
-    client_id: String,
-    client_secret: String,
-    pub user_id: String,
-    redirect_uri: String,
-    scopes: HashSet<String>,
-    token: Token,
-}
+        pub async fn get_from_db<V: DeserializeOwned>(key: &str) -> Result<Option<V>, sled::Error> {
+            DATABASE.get(key).map(|out| out.map(|out| bincode::deserialize(&out).expect("parse as bincode")))
+        }
 
-impl Into<SpotifyClient> for PackedClient {
-    fn into(self) -> SpotifyClient {
-        let mut client = AuthCodeSpotify::default();
+        pub async fn put_to_db<V: Serialize>(key: &str, value: V) -> Result<Option<V>, sled::Error> {
+            DATABASE.insert(key, bincode::serialize(&value).expect("parse to bincode"))?;
 
-        client.creds = Credentials {
-            id: self.client_id,
-            secret: Some(self.client_secret),
-        };
-        client.oauth = OAuth {
-            redirect_uri: self.redirect_uri,
-            scopes: self.scopes,
-            ..Default::default()
-        };
-        client.token = Arc::new(Mutex::new(Some(self.token)));
-        client.config = Config {
-            token_cached: false,
-            ..Default::default()
-        };
-
-        SpotifyClient {
-            client,
-            user_id: self.user_id,
+            Ok(Some(value))
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SpotifyClient {
-    pub client: AuthCodeSpotify,
-    pub user_id: String,
-}
+#[server]
+pub async fn get_current_user() -> Result<Option<PrivateUser>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rspotify::clients::OAuthClient;
 
-impl SpotifyClient {
-    pub async fn packed(self) -> PackedClient {
-        #[cfg(feature = "ssr")]
-        let token = self.client.token.lock().await.unwrap();
+        let Some(user) = use_context::<AuthSession>()
+            .expect("no auth session provided")
+            .user else {
+                return Ok(None);
+            };
 
-        #[cfg(feature = "hydrate")]
-        let token = self.client.token.lock().unwrap();
+        let userinfo_key = format!("{}_userinfo", user.user_id);
 
-        PackedClient {
-            user_id: self.user_id,
-            client_id: self.client.creds.id,
-            client_secret: self.client.creds.secret.unwrap_or_default(),
-            redirect_uri: self.client.oauth.redirect_uri,
-            scopes: self.client.oauth.scopes,
-            token: token.clone().unwrap_or_default(),
-        }
-    } 
-
-    pub async fn current_user(&self) -> Result<PrivateUser, ClientError> {
-        cfg_if! {
-            if #[cfg(feature = "hydrate")] {
-                self.client.current_user()
-            } else {
-                self.client.current_user().await
+        // get user from cache from user id
+        match get_from_db::<PrivateUser>(&userinfo_key).await {
+            // if successful & exists, deserialize the result
+            Ok(Some(user)) => Ok(Some(user)),
+            // if unsuccessful or doesn't exist, fetch from API
+            _ => match user.client.current_user().await {
+                // if successful, insert that into the database
+                Ok(me) => put_to_db::<PrivateUser>(&userinfo_key, me).await.map_err(|err| ServerFnError::ServerError(format!("Error inserting into cache: {err}"))),
+                // if API failed, err out to client
+                Err(err) => Err(ServerFnError::ServerError(format!("Error fetching from spotify: {err}")))
             }
         }
     }
 }
 
-impl PartialEq for SpotifyClient {
-    fn eq(&self, other: &Self) -> bool {
-        self.user_id == other.user_id
-    }
-}

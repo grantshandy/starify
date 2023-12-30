@@ -8,7 +8,7 @@ mod dashboard;
 use login::SpotifyButtons;
 use dashboard::Dashboard;
 
-use crate::{errors::{AppError, ErrorTemplate}, client::PackedClient};
+use crate::errors::{AppError, ErrorTemplate};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -24,9 +24,9 @@ pub fn App() -> impl IntoView {
             <div data-theme="light" class="min-h-screen flex flex-col">
                 <main class="grow flex">
                     <Routes>
-                        <Route path="/" view=IndexPage ssr=SsrMode::Async/>
-                        <Route path="/about" view=AboutPage/>
-                        <Route path="/dashboard" view=Dashboard/>
+                        <Route path="/" view=IndexPage />
+                        <Route path="/about" view=AboutPage />
+                        <Route path="/dashboard" view=Dashboard />
                     </Routes>
                 </main>
                 <footer class="footer footer-center p-4 bg-base-400 text-base-content">
@@ -74,20 +74,5 @@ pub fn AboutPage() -> impl IntoView {
             <h1>"About!"</h1>
             <A href="/">"Back to Home"</A>
         </div>
-    }
-}
-
-#[server]
-pub async fn get_client() -> Result<Option<PackedClient>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let user = use_context::<crate::auth::AuthSession>()
-            .expect("no auth session injected")
-            .user;
-
-        Ok(match user {
-            Some(client) => Some(client.packed().await),
-            None => None,
-        })
     }
 }

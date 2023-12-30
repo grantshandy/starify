@@ -63,12 +63,6 @@ async fn main() -> eyre::Result<()> {
         },
     };
 
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_same_site(SameSite::Lax)
-        .with_expiry(Expiry::OnInactivity(Duration::days(1)));
-
     let backend = Backend::new(AuthCodeSpotify::with_config(
         app_state.spotify_credentials.clone(),
         OAuth {
@@ -85,6 +79,13 @@ async fn main() -> eyre::Result<()> {
         },
     ));
 
+    // TODO: write sled db SessionStore
+    let session_layer = SessionManagerLayer::new(MemoryStore::default())
+        .with_same_site(SameSite::Lax)
+        .with_expiry(Expiry::OnInactivity(Duration::days(1)));
+
+
+
     let router = Router::new()
         .route(CALLBACK_ENDPOINT, get(auth::authorize))
         .route(
@@ -94,12 +95,11 @@ async fn main() -> eyre::Result<()> {
         .leptos_routes_with_handler(routes, get(leptos_routes_handler))
         .fallback(static_handler)
         .with_state(app_state)
-        .layer(
-            ServiceBuilder::new()
-                .layer(HandleErrorLayer::new(|_: BoxError| async {
-                    StatusCode::BAD_REQUEST
-                }))
-                .layer(AuthManagerLayerBuilder::new(backend, session_layer).build()),
+        .layer(ServiceBuilder::new()
+            .layer(HandleErrorLayer::new(|_: BoxError| async {
+                StatusCode::BAD_REQUEST
+            }))
+            .layer(AuthManagerLayerBuilder::new(backend, session_layer).build())
         );
 
     tracing::info!("Listening on http://{addr}/");
@@ -173,3 +173,4 @@ fn provide_state_context(session: &AuthSession, app_state: &AppState) {
     leptos::provide_context(app_state.leptos_options.clone());
     leptos::provide_context(session.clone());
 }
+

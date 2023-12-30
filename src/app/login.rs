@@ -1,10 +1,11 @@
 use leptos::*;
 use leptos_router::*;
+
 use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "ssr")]
 use {
-    crate::LOGIN_STATE_KEY,
+    crate::{LOGIN_STATE_KEY, client},
     axum_extra::extract::cookie::{Cookie, SameSite},
     http::{header, HeaderValue},
     time::{Duration, OffsetDateTime},
@@ -17,36 +18,30 @@ pub fn SpotifyButtons(
 
     view! {
         <Suspense>
-            {move || {
-                login_info
-                    .get()
-                    .map(|res| match res {
-                        Ok(info) => {
-                            match info.user {
-                                Some(name) => {
-                                    view! {
-                                        <A href="/dashboard" class="btn btn-primary">
-                                            "Continue as "
-                                            {name}
-                                        </A>
-                                        <a href=info.url class="btn btn-xs">
-                                            "Use Other Account"
-                                        </a>
-                                    }
-                                        .into_view()
-                                }
-                                None => {
-                                    view! {
-                                        <a href=info.url class="btn btn-primary">
-                                            "Link to Spotify"
-                                        </a>
-                                    }
-                                        .into_view()
-                                }
-                            }
-                        }
-                        Err(err) => view! { <p>"Err: " {err.to_string()}</p> }.into_view(),
-                    })
+            // match destructuring :)))
+            {move || match login_info.get() {
+                Some(Ok(LoginInfo { url, user: Some(name) })) => {
+                    view! {
+                        <A href="/dashboard" class="btn btn-primary">
+                            "Continue as "
+                            {name}
+                        </A>
+                        <a href=url class="btn btn-xs">
+                            "Continue as Other User"
+                        </a>
+                    }
+                        .into_view()
+                }
+                Some(Ok(LoginInfo { url, user: None })) => {
+                    view! {
+                        <a href=url class="btn btn-primary">
+                            "Link to Spotify"
+                        </a>
+                    }
+                        .into_view()
+                }
+                Some(Err(err)) => view! { <p>"Error: " {err.to_string()}</p> }.into_view(),
+                None => view! { <span class="btn">"Loading Buttons"</span> }.into_view(),
             }}
 
         </Suspense>
@@ -87,13 +82,8 @@ pub async fn get_login_info() -> Result<LoginInfo, ServerFnError> {
                 return Err(ServerFnError::ServerError("Authorization URL Error".to_string()))
             };
 
-        let user = match auth_session.user {
-            Some(user) => user.current_user().await.ok(),
-            None => None,
-        };
-
         return Ok(LoginInfo {
-            user: user.map(|user| user.display_name.unwrap_or("Unknown User".to_string())),
+            user: client::get_current_user().await?.map(|user| user.display_name.unwrap_or("Unknown User".to_string())),
             url
         });
 
@@ -105,6 +95,3 @@ pub struct LoginInfo {
     pub user: Option<String>,
     pub url: String,
 }
-
-
-

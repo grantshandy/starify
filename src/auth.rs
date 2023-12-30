@@ -1,20 +1,20 @@
 use async_trait::async_trait;
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
 use thiserror::Error;
 
 use axum::{
     extract::Query,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect}, error_handling::HandleErrorLayer,
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
-use axum_login::{AuthUser, AuthnBackend, UserId};
+use axum_extra::extract::{cookie::{Cookie, SameSite}, CookieJar};
+use axum_login::{AuthUser, AuthnBackend, UserId, tower_sessions::{SessionManagerLayer, Expiry, MemoryStore}, AuthManagerLayerBuilder, AuthManagerLayer};
 use http::{header, HeaderValue, StatusCode};
-use rspotify::{clients::OAuthClient, AuthCodeSpotify};
+use rspotify::{clients::{OAuthClient, BaseClient}, AuthCodeSpotify, Token};
+use time::Duration;
+use tower::{ServiceBuilder, BoxError, Service};
 
-use crate::{LOGIN_STATE_KEY, client::SpotifyClient};
+use crate::{LOGIN_STATE_KEY, client};
+
+pub type AuthSession = axum_login::AuthSession<Backend>;
 
 #[derive(serde::Deserialize, Debug)]
 pub struct CallbackQuery {
@@ -63,7 +63,13 @@ pub async fn authorize(
         .into_response();
 }
 
-impl AuthUser for SpotifyClient {
+#[derive(Clone, Debug)]
+pub struct User {
+    pub client: AuthCodeSpotify,
+    pub user_id: String,
+}
+
+impl AuthUser for User {
     type Id = String;
 
     fn id(&self) -> Self::Id {
@@ -84,21 +90,20 @@ pub struct Credentials {
 pub enum Error {
     #[error(transparent)]
     Spotify(rspotify::ClientError),
-}
 
-pub type AuthSession = axum_login::AuthSession<Backend>;
+    #[error(transparent)]
+    Sled(sled::Error)
+}
 
 #[derive(Debug, Clone)]
 pub struct Backend {
     client: AuthCodeSpotify,
-    db: Arc<RwLock<HashMap<UserId<Self>, SpotifyClient>>>,
 }
 
 impl Backend {
     pub fn new(client: AuthCodeSpotify) -> Self {
         Self {
             client,
-            db: Arc::new(RwLock::new(HashMap::default())),
         }
     }
 
@@ -113,7 +118,7 @@ impl Backend {
 
 #[async_trait]
 impl AuthnBackend for Backend {
-    type User = SpotifyClient;
+    type User = User;
     type Credentials = Credentials;
     type Error = Error;
 
@@ -130,20 +135,43 @@ impl AuthnBackend for Backend {
 
         let me = client.current_user().await.map_err(Error::Spotify)?;
 
-        let user = SpotifyClient {
+        let user = User {
             client,
             user_id: me.id.to_string(),
         };
 
-        let db = &mut self.db.write().unwrap();
-        db.insert(user.id().clone(), user.clone());
+        let token = user
+            .client
+            .get_token()
+            .lock()
+            .await
+            .expect("lock client token")
+            .clone()
+            .expect("get client token");
 
-        Ok(Some(user))
+        client::put_to_db(&user.user_id, token)
+            .await
+            .map_err(Error::Sled)
+            .map(|_| Some(user))
     }
 
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
-        Ok(self.db.read().expect("read database").get(user_id).cloned())
+        let client = self.client.clone();
+
+        let Some(token) = client::get_from_db::<Token>(user_id)
+            .await
+            .map_err(Error::Sled)? else {
+                return Ok(None);
+            };
+        
+        *client.token.lock().await.expect("lock on token") = Some(token);
+
+        let user = User {
+            client,
+            user_id: user_id.to_string(),
+        };
+
+        Ok(Some(user))
     }
 }
-
 

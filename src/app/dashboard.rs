@@ -1,59 +1,60 @@
 use leptos::*;
-use leptos_router::*;
+use rspotify::model::PrivateUser;
 
-use crate::{client::SpotifyClient, app::get_client};
+use crate::client;
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let client = create_resource(|| (), |_| async move {
-        get_client().await });
+        client::get_current_user().await });
+    
 
     view! {
-        <Suspense fallback=|| {
-            view! { <p>"Loading Client"</p> }
-        }>
-            {move || {
-                client
-                    .get()
-                    .map(|client| {
-                        view! {
-                            <Loaded client=client
-                                .expect("get client from server fn")
-                                .expect("client found for user")
-                                .into()/>
-                        }
-                    })
-            }}
-        </Suspense>
+        <div class="grow">
+            <Suspense>
+                {move || match client.get() {
+                    Some(Ok(Some(user))) => Some(view! { <User user=user/> }.into_view()),
+                    Some(Ok(None)) => {
+                        cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
+                            leptos_axum::redirect("/");
+                        } else {
+                            leptos_router::use_navigate()("/", Default::default());
+                        }}
+
+                        None
+                    },
+                    Some(Err(err)) => Some(view! { <p>"An Error " {err.to_string()}</p> }.into_view()),
+                    None => Some(view! { <p>"Loading View"</p> }.into_view()),
+                }}
+
+            </Suspense>
+        </div>
     }
 }
 
 #[component]
-fn Loaded(client: SpotifyClient) -> impl IntoView {
-    let (client, _) = create_signal(client);
-
-    let user = create_resource(move || client.get(), |client| async move {
-        client.current_user().await.map_err(|err| err.to_string())
-    });
+fn User(
+    user: PrivateUser
+) -> impl IntoView {
+    let img_url = user.images.expect("no profile pictures").get(0).expect("no profile picture").url.clone();
 
     view! {
-        <Suspense fallback=|| {
-            view! { <p>"Loading Profile"</p> }
-        }>
-            {move || {
-                user
-                    .get()
-                    .map(|user| match user {
-                        Ok(user) => view! { <p>"Username: " {user.display_name}</p> }.into_view(),
-                        Err(err) => view! { <p>{err}</p> }.into_view(),
-                    })
-            }}
-
-        </Suspense>
-        <p>
-            <A href="/">"To Main Page"</A>
-        </p>
+        <div class="card w-96 bg-base-100 shadow-xl image-full">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <div class="avatar">
+                        <div class="w-12 mask mask-squircle">
+                            <img src={img_url} />
+                        </div>
+                    </div>
+                    {user.display_name.unwrap_or("Unknown Username".to_string())}
+                </h2>
+                <p>If a dog chews shoes whose shoes does he choose?</p>
+                <div class="card-actions justify-end">
+                    <button class="btn btn-primary">Buy Now</button>
+                </div>
+            </div>
+        </div>
     }
 }
-
 
