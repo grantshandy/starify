@@ -6,7 +6,22 @@ mod login;
 
 use login::SpotifyButton;
 
-use crate::errors::{AppError, ErrorTemplate};
+use crate::{errors::{AppError, ErrorTemplate}, client::PackedClient};
+
+#[server]
+async fn get_client() -> Result<Option<PackedClient>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let user = use_context::<crate::auth::AuthSession>()
+            .expect("no packed client found")
+            .user;
+
+        Ok(match user {
+            Some(client) => Some(client.packed().await),
+            None => None,
+        })
+    }
+}
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -24,7 +39,7 @@ pub fn App() -> impl IntoView {
                     <Routes>
                         <Route path="/" view=LoginPage ssr=SsrMode::Async/>
                         <Route path="/about" view=AboutPage/>
-                        <Route path="/me" view=Me ssr=SsrMode::Async/>
+                        <Route path="/me" view=Me />
                     </Routes>
                 </main>
                 <footer class="footer footer-center p-4 bg-base-400 text-base-content">

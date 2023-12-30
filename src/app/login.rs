@@ -58,13 +58,16 @@ pub async fn get_login_url() -> Result<String, ServerFnError> {
             )
             .expect("create cookie HeaderValue"),
         );
-        let mut spotify = use_context::<crate::auth::AuthSession>()
-            .expect("provide auth session")
-            .backend.client_base();
 
-        spotify.oauth.state = state;
+        let Some(url) = use_context::<crate::auth::AuthSession>()
+            .expect("no auth session provided")
+            .backend
+            .authorize_url(state) else {
+                return Err(ServerFnError::ServerError("Authorization URL Error".to_string()))
+            };
 
-        return Ok(spotify.get_authorize_url(true).expect("Client Error"));
+        return Ok(url);
+
     }
 }
 

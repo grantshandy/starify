@@ -14,7 +14,7 @@ use axum_login::{AuthUser, AuthnBackend, UserId};
 use http::{header, HeaderValue, StatusCode};
 use rspotify::{clients::OAuthClient, AuthCodeSpotify};
 
-use crate::{User, LOGIN_STATE_KEY};
+use crate::{LOGIN_STATE_KEY, client::SpotifyClient};
 
 #[derive(serde::Deserialize, Debug)]
 pub struct CallbackQuery {
@@ -63,15 +63,15 @@ pub async fn authorize(
         .into_response();
 }
 
-impl AuthUser for User {
+impl AuthUser for SpotifyClient {
     type Id = String;
 
     fn id(&self) -> Self::Id {
-        self.id.clone()
+        self.user_id.clone()
     }
 
     fn session_auth_hash(&self) -> &[u8] {
-        self.id.as_bytes()
+        self.user_id.as_bytes()
     }
 }
 
@@ -91,7 +91,7 @@ pub type AuthSession = axum_login::AuthSession<Backend>;
 #[derive(Debug, Clone)]
 pub struct Backend {
     client: AuthCodeSpotify,
-    db: Arc<RwLock<HashMap<UserId<Self>, User>>>,
+    db: Arc<RwLock<HashMap<UserId<Self>, SpotifyClient>>>,
 }
 
 impl Backend {
@@ -102,22 +102,18 @@ impl Backend {
         }
     }
 
-    pub async fn user_client(&self, user: User) -> AuthCodeSpotify {
-        let client = self.client.clone();
+    pub fn authorize_url(&self, state: String) -> Option<String> {
+        let mut client = self.client.clone();
 
-        *client.token.lock().await.unwrap() = Some(user.token);
+        client.oauth.state = state;
 
-        client
-    }
-
-    pub fn client_base(&self) -> AuthCodeSpotify {
-        self.client.clone()
+        client.get_authorize_url(true).ok()
     }
 }
 
 #[async_trait]
 impl AuthnBackend for Backend {
-    type User = User;
+    type User = SpotifyClient;
     type Credentials = Credentials;
     type Error = Error;
 
@@ -134,19 +130,9 @@ impl AuthnBackend for Backend {
 
         let me = client.current_user().await.map_err(Error::Spotify)?;
 
-        let user = User {
-            token: client
-                .token
-                .lock()
-                .await
-                .expect("unlock client token mutext")
-                .clone()
-                .expect("user should have token"),
-            display_name: me.display_name.unwrap_or("no display name".to_string()),
-            id: me.id.to_string(),
-            href: me.href,
-            followers: me.followers.map(|f| f.total).unwrap_or(0),
-            images: me.images.unwrap_or_default(),
+        let user = SpotifyClient {
+            client,
+            user_id: me.id.to_string(),
         };
 
         let db = &mut self.db.write().unwrap();

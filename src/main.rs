@@ -3,7 +3,7 @@ use std::{collections::HashSet, env, net::SocketAddr};
 use axum::{
     body::Body as AxumBody,
     error_handling::HandleErrorLayer,
-    extract::{Path, RawQuery, State},
+    extract::{Path, RawQuery, State, FromRef},
     http::StatusCode,
     http::{header, HeaderMap, Request, Uri},
     response::IntoResponse,
@@ -23,8 +23,15 @@ use tower::ServiceBuilder;
 use starify::{
     app::App,
     auth::{self, Backend, AuthSession},
-    AppState, CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
+    CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
 };
+
+#[derive(FromRef, Debug, Clone)]
+pub struct AppState {
+    pub leptos_options: leptos::LeptosOptions,
+    pub routes: Vec<leptos_router::RouteListing>,
+    pub spotify_credentials: rspotify::Credentials,
+}
 
 /// CLI for starify
 #[derive(argh::FromArgs)]
