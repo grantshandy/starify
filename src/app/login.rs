@@ -1,4 +1,6 @@
 use leptos::*;
+use leptos_router::*;
+use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "ssr")]
 use {
@@ -9,27 +11,44 @@ use {
 };
 
 #[component]
-pub fn SpotifyButton() -> impl IntoView {
-    let url = create_resource(|| (), |_| async move { get_login_url().await });
+pub fn SpotifyButtons(
+) -> impl IntoView {
+    let login_info = create_resource(|| (), |_| async move { get_login_info().await });
 
     view! {
-        <Suspense fallback=|| {
-            view! { <span class="btn">"Loading Link..."</span> }
-        }>
-            {url
-                .get()
-                .map(|res| {
-                    res
-                        .map(|url| {
-                            view! {
-                                <a href=url class="btn btn-primary">
-                                    "Link to Spotify"
-                                </a>
+        <Suspense>
+            {move || {
+                login_info
+                    .get()
+                    .map(|res| match res {
+                        Ok(info) => {
+                            match info.user {
+                                Some(name) => {
+                                    view! {
+                                        <A href="/dashboard" class="btn btn-primary">
+                                            "Continue as "
+                                            {name}
+                                        </A>
+                                        <a href=info.url class="btn btn-xs">
+                                            "Use Other Account"
+                                        </a>
+                                    }
+                                        .into_view()
+                                }
+                                None => {
+                                    view! {
+                                        <a href=info.url class="btn btn-primary">
+                                            "Link to Spotify"
+                                        </a>
+                                    }
+                                        .into_view()
+                                }
                             }
-                                .into_view()
-                        })
-                        .unwrap_or_default()
-                })}
+                        }
+                        Err(err) => view! { <p>"Err: " {err.to_string()}</p> }.into_view(),
+                    })
+            }}
+
         </Suspense>
     }
 }
@@ -37,7 +56,7 @@ pub fn SpotifyButton() -> impl IntoView {
 /// Creates a unique spotify login URL and attaches the current unix time
 /// to the state-passthrough to the URL & client cookie to validate.
 #[server(Login)]
-pub async fn get_login_url() -> Result<String, ServerFnError> {
+pub async fn get_login_info() -> Result<LoginInfo, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let state = OffsetDateTime::now_utc().unix_timestamp().to_string();
@@ -59,15 +78,33 @@ pub async fn get_login_url() -> Result<String, ServerFnError> {
             .expect("create cookie HeaderValue"),
         );
 
-        let Some(url) = use_context::<crate::auth::AuthSession>()
-            .expect("no auth session provided")
+        let auth_session = use_context::<crate::auth::AuthSession>()
+            .expect("no auth session provided");
+
+        let Some(url) = auth_session
             .backend
             .authorize_url(state) else {
                 return Err(ServerFnError::ServerError("Authorization URL Error".to_string()))
             };
 
-        return Ok(url);
+        let user = match auth_session.user {
+            Some(user) => user.current_user().await.ok(),
+            None => None,
+        };
+
+        return Ok(LoginInfo {
+            user: user.map(|user| user.display_name.unwrap_or("Unknown User".to_string())),
+            url
+        });
 
     }
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LoginInfo {
+    pub user: Option<String>,
+    pub url: String,
+}
+
+
 

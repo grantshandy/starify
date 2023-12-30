@@ -6,7 +6,7 @@ use rspotify::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PackedClient {
     client_id: String,
     client_secret: String,
@@ -77,4 +77,8 @@ impl SpotifyClient {
     }
 }
 
-
+impl PartialEq for SpotifyClient {
+    fn eq(&self, other: &Self) -> bool {
+        self.user_id == other.user_id
+    }
+}

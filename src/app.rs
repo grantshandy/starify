@@ -3,25 +3,12 @@ use leptos_router::*;
 use leptos::*;
 
 mod login;
+mod dashboard;
 
-use login::SpotifyButton;
+use login::SpotifyButtons;
+use dashboard::Dashboard;
 
 use crate::{errors::{AppError, ErrorTemplate}, client::PackedClient};
-
-#[server]
-async fn get_client() -> Result<Option<PackedClient>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let user = use_context::<crate::auth::AuthSession>()
-            .expect("no packed client found")
-            .user;
-
-        Ok(match user {
-            Some(client) => Some(client.packed().await),
-            None => None,
-        })
-    }
-}
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -37,9 +24,9 @@ pub fn App() -> impl IntoView {
             <div data-theme="light" class="min-h-screen flex flex-col">
                 <main class="grow flex">
                     <Routes>
-                        <Route path="/" view=LoginPage ssr=SsrMode::Async/>
+                        <Route path="/" view=IndexPage ssr=SsrMode::Async/>
                         <Route path="/about" view=AboutPage/>
-                        <Route path="/me" view=Me />
+                        <Route path="/dashboard" view=Dashboard/>
                     </Routes>
                 </main>
                 <footer class="footer footer-center p-4 bg-base-400 text-base-content">
@@ -53,7 +40,7 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-pub fn LoginPage() -> impl IntoView {
+pub fn IndexPage() -> impl IntoView {
     view! {
         <div class="grow hero">
             <div class="hero-content flex-col lg:flex-row-reverse">
@@ -64,13 +51,15 @@ pub fn LoginPage() -> impl IntoView {
                 <div class="space-y-6 text-center">
                     <h1 class="text-5xl font-bold">"starify"</h1>
                     <p>"View Artists in Constellations"</p>
-                    <div class="flow-root">
-                        <div class="float-left">
-                            <SpotifyButton/>
+                    <div class="flow-root w-full space-x-2">
+                        <div class="float-left flex flex-col items-start space-y-1">
+                            <SpotifyButtons />
                         </div>
-                        <A href="/about" class="float-right btn">
-                            "About"
-                        </A>
+                        <div class="float-right">
+                            <A href="/about" class="btn">
+                                "About"
+                            </A>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -88,12 +77,17 @@ pub fn AboutPage() -> impl IntoView {
     }
 }
 
-#[component]
-pub fn Me() -> impl IntoView {
-    view! {
-        <div>
-            <p>"Your Info"</p>
-        </div>
+#[server]
+pub async fn get_client() -> Result<Option<PackedClient>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let user = use_context::<crate::auth::AuthSession>()
+            .expect("no auth session injected")
+            .user;
+
+        Ok(match user {
+            Some(client) => Some(client.packed().await),
+            None => None,
+        })
     }
 }
-

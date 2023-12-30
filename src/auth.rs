@@ -58,7 +58,7 @@ pub async fn authorize(
     return (
         StatusCode::SEE_OTHER,
         jar.remove(Cookie::named(LOGIN_STATE_KEY)),
-        [(header::LOCATION, HeaderValue::from_static("/me"))],
+        [(header::LOCATION, HeaderValue::from_static("/dashboard"))],
     )
         .into_response();
 }
