@@ -85,7 +85,6 @@ async fn main() -> eyre::Result<()> {
         .with_expiry(Expiry::OnInactivity(Duration::days(1)));
 
 
-
     let router = Router::new()
         .route(CALLBACK_ENDPOINT, get(auth::authorize))
         .route(
@@ -114,6 +113,7 @@ async fn main() -> eyre::Result<()> {
 #[folder = "$LEPTOS_SITE_ROOT/"]
 struct Asset;
 
+/// Handle all other non-leptos routes with [`rust_embed`]
 async fn static_handler(
     uri: Uri,
     State(state): State<AppState>,
@@ -135,6 +135,7 @@ async fn static_handler(
     }
 }
 
+/// Handle leptos routes and inject state for payload
 async fn leptos_routes_handler(
     session: AuthSession,
     State(app_state): State<AppState>,
@@ -150,6 +151,7 @@ async fn leptos_routes_handler(
     handler(req).await
 }
 
+/// Handle leptos server functions and inject state for pageload
 async fn server_fn_handler(
     session: AuthSession,
     State(app_state): State<AppState>,
@@ -168,6 +170,7 @@ async fn server_fn_handler(
     .await
 }
 
+/// Provide leptos context for each [`AppState`] field.
 fn provide_state_context(session: &AuthSession, app_state: &AppState) {
     leptos::provide_context(app_state.spotify_credentials.clone());
     leptos::provide_context(app_state.leptos_options.clone());

@@ -12,14 +12,20 @@ use rspotify::{clients::{OAuthClient, BaseClient}, AuthCodeSpotify, Token};
 
 use crate::{LOGIN_STATE_KEY, client};
 
+/// An axum_login auth session wrapper type
 pub type AuthSession = axum_login::AuthSession<Backend>;
 
+/// type representing OAuth2 callback query for `authorize`
 #[derive(serde::Deserialize, Debug)]
 pub struct CallbackQuery {
     pub code: Option<String>,
     pub state: i64,
 }
 
+/// oauth2 redirect endpoint located at [`crate::CALLBACK_ENDPOINT`]
+/// Redirects to:
+/// - `/` if authorization fails
+/// - `/dashboard` if authentication is successful 
 pub async fn authorize(
     mut auth_session: AuthSession,
     query: Query<CallbackQuery>,
@@ -61,6 +67,7 @@ pub async fn authorize(
         .into_response();
 }
 
+/// A backend type representing a user with their ID and [`rspotify::AuthCodeSpotify`].
 #[derive(Clone, Debug)]
 pub struct User {
     pub client: AuthCodeSpotify,
