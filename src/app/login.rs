@@ -1,49 +1,57 @@
-use std::collections::HashSet;
-
-use cfg_if::cfg_if;
 use leptos::*;
 use leptos_router::*;
 
-use crate::{
-    errors::{AppError, ErrorTemplate},
-    CALLBACK_ENDPOINT, LOGIN_STATE_KEY, SPOTIFY_SCOPES,
+use serde::{Serialize, Deserialize};
+
+#[cfg(feature = "ssr")]
+use {
+    crate::{LOGIN_STATE_KEY, client},
+    axum_extra::extract::cookie::{Cookie, SameSite},
+    http::{header, HeaderValue},
+    time::{Duration, OffsetDateTime},
 };
 
-cfg_if::cfg_if! { if #[cfg(feature = "ssr")] {
-    use axum_extra::extract::cookie::{Cookie, SameSite};
-    use rspotify::{AuthCodeSpotify, Config, OAuth, scopes, Credentials};
-    use http::{header, HeaderValue};
-    use time::{Duration, OffsetDateTime};
-}}
-
 #[component]
-pub fn LoginPage() -> impl IntoView {
+pub fn SpotifyButtons(
+) -> impl IntoView {
+    let login_info = create_resource(|| (), |_| async move { get_login_info().await });
+
     view! {
-        <div class="grow hero">
-            <div class="hero-content flex-col lg:flex-row-reverse">
-                <img src="https://static.observableusercontent.com/thumbnail/58460abd4408b66660e76009e84ac91f2f27bb2ab789c09512cffe13ffe48725.jpg" class="max-w-sm rounded-lg shadow-2xl" />
-                <div class="space-y-6">
-                    <h1 class="text-5xl font-bold">"Musiscope"</h1>
-                    <p>"View Artists in Constellations"</p>
-                    <div class="flow-root">
-                        <Await
-                            future=|| get_login_url()
-                            let:url_result
-                        >
-                            <a class="float-left btn btn-primary" href=url_result.as_ref().expect("get login URL")>"Link to Spotify"</a>
-                        </Await>
-                        <A href="/about" class="float-right btn">"About"</A>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <Suspense>
+            // match destructuring :)))
+            {move || match login_info.get() {
+                Some(Ok(LoginInfo { url, user: Some(name) })) => {
+                    view! {
+                        <A href="/dashboard" class="btn btn-primary">
+                            "Continue as "
+                            {name}
+                        </A>
+                        <a href=url class="btn btn-xs">
+                            "Continue as Other User"
+                        </a>
+                    }
+                        .into_view()
+                }
+                Some(Ok(LoginInfo { url, user: None })) => {
+                    view! {
+                        <a href=url class="btn btn-primary">
+                            "Link to Spotify"
+                        </a>
+                    }
+                        .into_view()
+                }
+                Some(Err(err)) => view! { <p>"Error: " {err.to_string()}</p> }.into_view(),
+                None => view! { <span class="btn">"Loading Buttons"</span> }.into_view(),
+            }}
+
+        </Suspense>
     }
 }
 
 /// Creates a unique spotify login URL and attaches the current unix time
 /// to the state-passthrough to the URL & client cookie to validate.
 #[server(Login)]
-async fn get_login_url() -> Result<String, ServerFnError> {
+pub async fn get_login_info() -> Result<LoginInfo, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let state = OffsetDateTime::now_utc().unix_timestamp().to_string();
@@ -65,19 +73,25 @@ async fn get_login_url() -> Result<String, ServerFnError> {
             .expect("create cookie HeaderValue"),
         );
 
-        let creds = use_context::<Credentials>().expect("no spotify credentials provided");
-        let oauth = OAuth {
-            redirect_uri: format!("http://{site_addr}{CALLBACK_ENDPOINT}"),
-            state,
-            scopes: HashSet::from(SPOTIFY_SCOPES.map(|s| s.into())),
-            ..Default::default()
-        };
-        let config = Config {
-            token_cached: false,
-            ..Default::default()
-        };
+        let auth_session = use_context::<crate::auth::AuthSession>()
+            .expect("no auth session provided");
 
-        let spotify = AuthCodeSpotify::with_config(creds, oauth, config);
-        return Ok(spotify.get_authorize_url(true).expect("Client Error"));
+        let Some(url) = auth_session
+            .backend
+            .authorize_url(state) else {
+                return Err(ServerFnError::ServerError("Authorization URL Error".to_string()))
+            };
+
+        return Ok(LoginInfo {
+            user: client::get_current_user().await?.map(|user| user.display_name.unwrap_or("Unknown User".to_string())),
+            url
+        });
+
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LoginInfo {
+    pub user: Option<String>,
+    pub url: String,
 }

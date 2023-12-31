@@ -1,55 +1,36 @@
-use std::{env, net::SocketAddr};
+use std::{collections::HashSet, env, net::SocketAddr, str::FromStr};
 
 use axum::{
     body::Body as AxumBody,
     error_handling::HandleErrorLayer,
-    extract::{Path, RawQuery, State},
+    extract::{Path, RawQuery, State, FromRef},
+    http::StatusCode,
     http::{header, HeaderMap, Request, Uri},
     response::IntoResponse,
     routing::get,
     BoxError, Router,
 };
 use axum_login::{
-    tower_sessions::{Expiry, MemoryStore, SessionManagerLayer, cookie::SameSite},
+    tower_sessions::{cookie::SameSite, Expiry, MemoryStore, SessionManagerLayer},
     AuthManagerLayerBuilder,
 };
 use color_eyre::eyre;
-use http::StatusCode;
 use leptos_axum::{generate_route_list, LeptosRoutes};
-use rspotify::Credentials;
+use rspotify::{AuthCodeSpotify, Config, Credentials, OAuth};
 use time::Duration;
 use tower::ServiceBuilder;
 
-use musiscope::{
+use starify::{
     app::App,
-    auth::{self, Backend},
-    AppState, CALLBACK_ENDPOINT,
+    auth::{self, Backend, AuthSession},
+    CALLBACK_ENDPOINT, SPOTIFY_SCOPES,
 };
 
-
-/// CLI for musiscope
-#[derive(argh::FromArgs)]
-struct Args {
-    #[argh(option, description = "socket to serve on")]
-    socket: Option<SocketAddr>,
-
-    #[argh(
-        option,
-        description = "spotify client id (also set through SPOTIFY_CLIENT_ID)"
-    )]
-    client_id: Option<String>,
-
-    #[argh(
-        option,
-        description = "spotify client secret (also set through SPOTIFY_CLIENT_SECRET)"
-    )]
-    client_secret: Option<String>,
-
-    #[argh(
-        option,
-        description = "what domain the site is served on (defaults to socket)"
-    )]
-    domain: Option<String>,
+#[derive(FromRef, Debug, Clone)]
+pub struct AppState {
+    pub leptos_options: leptos::LeptosOptions,
+    pub routes: Vec<leptos_router::RouteListing>,
+    pub spotify_credentials: rspotify::Credentials,
 }
 
 #[tokio::main]
@@ -57,12 +38,10 @@ async fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
     color_eyre::install()?;
 
-    let args: Args = argh::from_env();
-
     // get leptos configuration from environment variables injected by cargo-leptos
     let mut conf = leptos::get_configuration(None).await.unwrap();
 
-    if let Some(socket) = args.socket {
+    if let Ok(Ok(socket)) = env::var("STARIFY_SOCKET").map(|var| SocketAddr::from_str(&var)) {
         conf.leptos_options.site_addr = socket;
     }
 
@@ -73,19 +52,38 @@ async fn main() -> eyre::Result<()> {
         leptos_options: conf.leptos_options.clone(),
         routes: routes.clone(),
         spotify_credentials: Credentials {
-            id: args.client_id.unwrap_or(env::var("SPOTIFY_CLIENT_ID")?),
-            secret: Some(
-                args.client_secret
-                    .unwrap_or(env::var("SPOTIFY_CLIENT_SECRET")?),
-            ),
+            id: match env::var("SPOTIFY_CLIENT_ID") {
+                Ok(var) => var,
+                Err(err) => return Err(eyre::anyhow!(err))
+            },
+            secret: match env::var("SPOTIFY_CLIENT_SECRET") {
+                Ok(var) => Some(var),
+                Err(err) => return Err(eyre::anyhow!(err))
+            },
         },
     };
 
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
+    let backend = Backend::new(AuthCodeSpotify::with_config(
+        app_state.spotify_credentials.clone(),
+        OAuth {
+            redirect_uri: format!(
+                "http://{}{CALLBACK_ENDPOINT}",
+                &app_state.leptos_options.site_addr
+            ),
+            scopes: HashSet::from(SPOTIFY_SCOPES.map(|s| s.into())),
+            ..Default::default()
+        },
+        Config {
+            token_cached: false,
+            ..Default::default()
+        },
+    ));
+
+    // TODO: write sled db SessionStore
+    let session_layer = SessionManagerLayer::new(MemoryStore::default())
         .with_same_site(SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(Duration::days(1)));
+
 
     let router = Router::new()
         .route(CALLBACK_ENDPOINT, get(auth::authorize))
@@ -95,7 +93,13 @@ async fn main() -> eyre::Result<()> {
         )
         .leptos_routes_with_handler(routes, get(leptos_routes_handler))
         .fallback(static_handler)
-        .with_state(app_state);
+        .with_state(app_state)
+        .layer(ServiceBuilder::new()
+            .layer(HandleErrorLayer::new(|_: BoxError| async {
+                StatusCode::BAD_REQUEST
+            }))
+            .layer(AuthManagerLayerBuilder::new(backend, session_layer).build())
+        );
 
     tracing::info!("Listening on http://{addr}/");
     axum::Server::bind(&addr)
@@ -109,6 +113,7 @@ async fn main() -> eyre::Result<()> {
 #[folder = "$LEPTOS_SITE_ROOT/"]
 struct Asset;
 
+/// Handle all other non-leptos routes with [`rust_embed`]
 async fn static_handler(
     uri: Uri,
     State(state): State<AppState>,
@@ -130,21 +135,25 @@ async fn static_handler(
     }
 }
 
+/// Handle leptos routes and inject state for payload
 async fn leptos_routes_handler(
+    session: AuthSession,
     State(app_state): State<AppState>,
     req: Request<AxumBody>,
 ) -> impl IntoResponse {
     let handler = leptos_axum::render_route_with_context(
         app_state.leptos_options.clone(),
         app_state.routes.clone(),
-        move || provide_state_context(app_state.clone()),
+        move || provide_state_context(&session, &app_state),
         App,
     );
 
     handler(req).await
 }
 
+/// Handle leptos server functions and inject state for pageload
 async fn server_fn_handler(
+    session: AuthSession,
     State(app_state): State<AppState>,
     path: Path<String>,
     headers: HeaderMap,
@@ -155,13 +164,16 @@ async fn server_fn_handler(
         path,
         headers,
         raw_query,
-        move || provide_state_context(app_state.clone()),
+        move || provide_state_context(&session, &app_state),
         req,
     )
     .await
 }
 
-fn provide_state_context(app_state: AppState) {
-    leptos::provide_context(app_state.spotify_credentials);
-    leptos::provide_context(app_state.leptos_options);
+/// Provide leptos context for each [`AppState`] field.
+fn provide_state_context(session: &AuthSession, app_state: &AppState) {
+    leptos::provide_context(app_state.spotify_credentials.clone());
+    leptos::provide_context(app_state.leptos_options.clone());
+    leptos::provide_context(session.clone());
 }
+

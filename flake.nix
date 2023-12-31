@@ -1,5 +1,5 @@
 {
-  description = "A basic devshell for developing musiscope.";
+  description = "A basic devshell for developing starify.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -55,6 +55,7 @@
           rustToolchain
           pkg-config
           cargo-leptos
+          leptosfmt
           tailwindcss
           binaryen
           nodejs_latest

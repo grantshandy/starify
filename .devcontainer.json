@@ -6,14 +6,5 @@
 		},
 		"ghcr.io/christophermacgown/devcontainer-features/direnv:1": {}
 	},
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"zerotaskx.rust-extension-pack",
-                "jnoortheen.nix-ide",
-				"mkhl.direnv"
-			]
-		}
-	},
 	"mounts": ["source=nix,target=/nix,type=volume"]
 }
