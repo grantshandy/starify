@@ -81,7 +81,7 @@ ssr = [
     "dep:async-trait",
     "dep:tower",
     "dep:futures",
-    "dep:futures-util"
+    "dep:futures-util",
 ]
 default = ["ssr"]
 
