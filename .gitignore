@@ -2,5 +2,5 @@ target/
 .direnv/
 .env
 result/
-node_modules/
+node_modules
 starify_cache/

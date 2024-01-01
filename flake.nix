@@ -34,7 +34,11 @@
               pkgs.nodePackages."@tailwindcss/typography"
             ];
           });
-        
+
+        linkNodeModules = ''
+          ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules
+        '';
+
         rustToolchain =
           pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
@@ -58,8 +62,6 @@
           leptosfmt
           tailwindcss
           binaryen
-          nodejs_latest
-          dgraph
         ];
 
         commonArgs = { inherit src nativeBuildInputs; };
@@ -67,12 +69,14 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         bin = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
+
+          configurePhase = linkNodeModules;
           buildPhaseCargoCommand = "cargo leptos build --release -vvv";
           cargoTestCommand = "cargo leptos test --release -vvv";
           cargoExtraArgs = "";
           installPhaseCommand = ''
             mkdir -p $out/bin
-            cp target/release/${name} $out/bin/
+            cp target/server-release/${name} $out/bin/
           '';
         });
       in {
@@ -82,6 +86,8 @@
         };
 
         devShells.default = pkgs.mkShell {
+          shellHook = linkNodeModules;
+
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
           inherit nativeBuildInputs;

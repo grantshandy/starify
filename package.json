@@ -1,5 +1,6 @@
 {
-  "devDependencies": {
+  "name": "starify",
+  "dependencies": {
     "daisyui": "^4.4.20"
   }
 }
