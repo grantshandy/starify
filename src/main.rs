@@ -84,7 +84,6 @@ async fn main() -> eyre::Result<()> {
         .with_same_site(SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(Duration::days(1)));
 
-
     let router = Router::new()
         .route(CALLBACK_ENDPOINT, get(auth::authorize))
         .route(

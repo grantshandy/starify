@@ -1,6 +1,6 @@
 target/
 .direnv/
 .env
-result/
+result
 node_modules
 starify_cache/

@@ -17,7 +17,7 @@
     };
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, crane, ... }:
+  outputs = { self, nixpkgs, rust-overlay, flake-utils, crane, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -39,50 +39,55 @@
           ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules
         '';
 
-        rustToolchain =
-          pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        ;
+
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (self + /rust-toolchain.toml);
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-        name = (craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; }).pname;        
-        src = with pkgs.lib;
-          sources.cleanSourceWith {
-            src = craneLib.path ./.;
-            filter = path: type:
-              (hasSuffix ".html" path) || (hasSuffix ".css" path) || (hasSuffix ".env" path)
-              || (hasInfix "/assets/" path)
-              || (hasSuffix ".js" path)
-              || (hasSuffix ".json" path)
-              || (craneLib.filterCargoSources path type);
+        src = with pkgs; lib.cleanSourceWith {
+              src = self; # The original, unfiltered source
+              filter = path: type:
+                (lib.hasSuffix "tailwind.config.js" path) ||
+                (lib.hasSuffix ".css" path) ||
+                (lib.hasInfix "/assets/" path) ||
+                (lib.hasInfix "/css/" path) ||
+                # Default filter from crane (allow .rs files)
+                (craneLib.filterCargoSources path type)
+              ;
+            };
+
+        cargoToml = builtins.fromTOML (builtins.readFile (self + /Cargo.toml));
+
+        inherit (cargoToml.package) name version;
+
+        # Crane builder for cargo-leptos projects
+        craneBuild = rec {
+          args = {
+            inherit src version name;
+
+            pname = name;
+            buildInputs = with pkgs; [
+              cargo-leptos
+              binaryen
+              tailwindcss
+            ];
           };
+          cargoArtifacts = craneLib.buildDepsOnly args;
+          buildArgs = args // {
+            LEPTOS_SITE_ROOT = "target/site";
 
-        nativeBuildInputs = with pkgs; [
-          rustToolchain
-          pkg-config
-          cargo-leptos
-          leptosfmt
-          tailwindcss
-          binaryen
-        ];
-
-        commonArgs = { inherit src nativeBuildInputs; };
-
-        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-        bin = craneLib.buildPackage (commonArgs // {
-          inherit cargoArtifacts;
-
-          configurePhase = linkNodeModules;
-          buildPhaseCargoCommand = "cargo leptos build --release -vvv";
-          cargoTestCommand = "cargo leptos test --release -vvv";
-          cargoExtraArgs = "";
-          installPhaseCommand = ''
-            mkdir -p $out/bin
-            cp target/server-release/${name} $out/bin/
-          '';
-        });
+            inherit cargoArtifacts;
+            buildPhaseCargoCommand = "ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules && cargo leptos build --release -vvv";
+            installPhaseCommand = ''
+              mkdir -p $out/bin
+              cp target/server-release/${name} $out/bin/
+            '';
+          };
+          package = craneLib.buildPackage buildArgs;
+        };
       in {
         packages = {
-          inherit bin;
-          default = bin;
+          default = craneBuild.package;
         };
 
         devShells.default = pkgs.mkShell {
@@ -90,7 +95,14 @@
 
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
-          inherit nativeBuildInputs;
+          nativeBuildInputs = with pkgs; [
+            rustToolchain
+            pkg-config
+            cargo-leptos
+            leptosfmt
+            tailwindcss
+            binaryen
+          ];
         };
       });
 }
