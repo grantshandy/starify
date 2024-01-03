@@ -39,8 +39,6 @@
           ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules
         '';
 
-        ;
-
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (self + /rust-toolchain.toml);
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
