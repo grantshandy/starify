@@ -36,7 +36,7 @@
           });
 
         linkNodeModules = ''
-          ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules
+          ln -s ${(pkgs.callPackage ./nix/tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules
         '';
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (self + /rust-toolchain.toml);
@@ -75,7 +75,7 @@
             LEPTOS_SITE_ROOT = "target/site";
 
             inherit cargoArtifacts;
-            buildPhaseCargoCommand = "ln -s ${(pkgs.callPackage ./tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules && cargo leptos build --release -vvv";
+            buildPhaseCargoCommand = "ln -s ${(pkgs.callPackage ./nix/tailwindcss.nix {}).nodeDependencies}/lib/node_modules ./node_modules && cargo leptos build --release -vvv";
             installPhaseCommand = ''
               mkdir -p $out/bin
               cp target/server-release/${name} $out/bin/

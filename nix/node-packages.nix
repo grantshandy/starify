@@ -40,13 +40,13 @@ let
         sha512 = "pHJg+jbuFsCjz9iclQBqyL3B2HLCBF71BwVNujUYEvCeQMvV97R59MNK3R2+jgJ3a1fcZgI9B3vYgz8lzr/BFQ==";
       };
     };
-    "daisyui-4.4.24" = {
+    "daisyui-4.5.0" = {
       name = "daisyui";
       packageName = "daisyui";
-      version = "4.4.24";
+      version = "4.5.0";
       src = fetchurl {
-        url = "https://registry.npmjs.org/daisyui/-/daisyui-4.4.24.tgz";
-        sha512 = "u/B3484J08V7N0rIYymnC+SyxOjlYQL+2vyhHWV+/KC+VaUcbEF2Z3H06eCPgdTiZ0J+ml44aH7wBhIymPFQ+g==";
+        url = "https://registry.npmjs.org/daisyui/-/daisyui-4.5.0.tgz";
+        sha512 = "RWQCPQ0vBUaxGy768O7Ku8SRQgwdoto1lDzuKeVOcMtYghuSbUY7NoPoMK+k8JH4s1J02OvpNAgtB9MeKpZIwg==";
       };
     };
     "fastparse-1.1.2" = {
@@ -76,13 +76,13 @@ let
         sha512 = "1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==";
       };
     };
-    "postcss-8.4.32" = {
+    "postcss-8.4.33" = {
       name = "postcss";
       packageName = "postcss";
-      version = "8.4.32";
+      version = "8.4.33";
       src = fetchurl {
-        url = "https://registry.npmjs.org/postcss/-/postcss-8.4.32.tgz";
-        sha512 = "D/kj5JNu6oo2EIy+XL/26JEDTlIbB8hw85G8StOE6L74RQAVVP5rej6wxCNqyMbR4RkPfqvezVbPw81Ngd6Kcw==";
+        url = "https://registry.npmjs.org/postcss/-/postcss-8.4.33.tgz";
+        sha512 = "Kkpbhhdjw2qQs2O2DGX+8m5OVqEcbB9HRBvuYM9pgrjEFUg30A9LmXNlTAUj4S9kgtGyrMbTzVjH7E+s5Re2yg==";
       };
     };
     "postcss-js-4.0.1" = {
@@ -107,17 +107,17 @@ let
   args = {
     name = "starify";
     packageName = "starify";
-    src = ./.;
+    src = ./..;
     dependencies = [
       sources."camelcase-css-2.0.1"
       sources."css-selector-tokenizer-0.8.0"
       sources."cssesc-3.0.0"
       sources."culori-3.3.0"
-      sources."daisyui-4.4.24"
+      sources."daisyui-4.5.0"
       sources."fastparse-1.1.2"
       sources."nanoid-3.3.7"
       sources."picocolors-1.0.0"
-      sources."postcss-8.4.32"
+      sources."postcss-8.4.33"
       sources."postcss-js-4.0.1"
       sources."source-map-js-1.0.2"
     ];
